@@ -15,7 +15,7 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+    <Grid Margin="20" RowDefinitions="Auto,*">
         
         <!-- Header -->
         <Border Grid.Row="0" 
@@ -43,8 +43,15 @@
             </Grid>
         </Border>
 
-        <!-- Main Content -->
-        <ScrollViewer Grid.Row="1">
+        <!-- Main Content with Tabs -->
+        <TabControl Grid.Row="1"
+                    Background="Transparent"
+                    Padding="0">
+            
+            <!-- Single Package Tab -->
+            <TabItem Header="Single Package">
+                <Grid RowDefinitions="*,Auto">
+        <ScrollViewer Grid.Row="0">
             <StackPanel Spacing="20">
                 
                 <!-- Source Folder Section -->
@@ -208,8 +215,8 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Action Buttons -->
-        <Border Grid.Row="2" 
+        <!-- Action Buttons for Single Mode -->
+        <Border Grid.Row="1" 
                 Background="#F5F5F5" 
                 Padding="20" 
                 CornerRadius="8"
@@ -232,6 +239,139 @@
                         IsEnabled="{Binding !IsProcessing}"/>
             </Grid>
         </Border>
+                </Grid>
+            </TabItem>
+            
+            <!-- Batch Processing Tab -->
+            <TabItem Header="Batch Processing">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    
+                    <!-- Batch Folder Selection -->
+                    <Border Grid.Row="0"
+                            Background="White" 
+                            BorderBrush="#E0E0E0" 
+                            BorderThickness="1" 
+                            CornerRadius="8" 
+                            Padding="20"
+                            Margin="0,0,0,20">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Parent Folder *" 
+                                       FontWeight="SemiBold" 
+                                       FontSize="14"
+                                       Foreground="#2C3E50"/>
+                            <TextBlock Text="Select a folder containing subfolders with applications to package" 
+                                       FontSize="12" 
+                                       Foreground="#7F8C8D"/>
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnGap="10">
+                                <TextBox Grid.Column="0" 
+                                         Text="{Binding BatchParentFolder}"
+                                         Watermark="Select parent folder containing app subfolders..."
+                                         IsReadOnly="True"/>
+                                <Button Grid.Column="1" 
+                                        Content="Browse..."
+                                        Command="{Binding BrowseBatchFolderCommand}"
+                                        Width="100"/>
+                                <Button Grid.Column="2" 
+                                        Content="Scan Folders"
+                                        Command="{Binding ScanBatchFoldersCommand}"
+                                        Background="#27AE60"
+                                        Foreground="White"
+                                        FontWeight="SemiBold"
+                                        Width="120"
+                                        IsEnabled="{Binding !IsProcessing}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Batch Output Folder -->
+                    <Border Grid.Row="1"
+                            Background="White" 
+                            BorderBrush="#E0E0E0" 
+                            BorderThickness="1" 
+                            CornerRadius="8" 
+                            Padding="20"
+                            Margin="0,0,0,20">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Batch Output Folder *" 
+                                       FontWeight="SemiBold" 
+                                       FontSize="14"
+                                       Foreground="#2C3E50"/>
+                            <TextBlock Text="Where all .intunewin packages will be saved" 
+                                       FontSize="12" 
+                                       Foreground="#7F8C8D"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" 
+                                         Text="{Binding BatchOutputFolder}"
+                                         Watermark="Select output folder for batch packages..."
+                                         Margin="0,0,10,0"/>
+                                <Button Grid.Column="1" 
+                                        Content="Browse..."
+                                        Command="{Binding BrowseBatchOutputFolderCommand}"
+                                        Width="100"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Log Output Section -->
+                    <Border Grid.Row="2"
+                            Background="White" 
+                            BorderBrush="#E0E0E0" 
+                            BorderThickness="1" 
+                            CornerRadius="8" 
+                            Padding="20">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Batch Processing Log" 
+                                       FontWeight="SemiBold" 
+                                       FontSize="14"
+                                       Foreground="#2C3E50"/>
+                            <Border Background="#F8F9FA" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="4"
+                                    Height="300">
+                                <ScrollViewer>
+                                    <TextBox Text="{Binding LogOutput}"
+                                             IsReadOnly="True"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             FontFamily="Consolas,Monaco,Courier New"
+                                             FontSize="12"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"/>
+                                </ScrollViewer>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Batch Action Buttons -->
+                    <Border Grid.Row="3" 
+                            Background="#F5F5F5" 
+                            Padding="20" 
+                            CornerRadius="8"
+                            Margin="0,20,0,0">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" 
+                                       Text="{Binding BatchStatusText}" 
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#7F8C8D"/>
+                            <Button Grid.Column="1" 
+                                    Content="Process Batch"
+                                    Command="{Binding ProcessBatchCommand}"
+                                    Background="#E67E22"
+                                    Foreground="White"
+                                    FontWeight="SemiBold"
+                                    Padding="30,12"
+                                    CornerRadius="6"
+                                    FontSize="14"
+                                    IsEnabled="{Binding !IsProcessing}"/>
+                        </Grid>
+                    </Border>
+                    
+                </Grid>
+            </TabItem>
+            
+        </TabControl>
         
     </Grid>
 
