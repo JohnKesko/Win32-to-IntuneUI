@@ -569,12 +569,15 @@ public partial class MainWindowViewModel : ViewModelBase
         var outputFolder = BatchOutputFolder.TrimEnd('\\', '/');
         var arguments = $"-c \"{sourceFolder}\" -s \"{candidate.SelectedInstaller}\" -o \"{outputFolder}\"";
 
+        AppendLog($"  Command: {Path.GetFileName(toolPath)} {arguments}");
+
         var startInfo = new ProcessStartInfo
         {
             FileName = toolPath,
             Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -601,7 +604,23 @@ public partial class MainWindowViewModel : ViewModelBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await process.WaitForExitAsync();
+        // Add timeout to prevent hanging indefinitely (5 minutes)
+        var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5));
+        var processTask = process.WaitForExitAsync();
+        
+        var completedTask = await Task.WhenAny(processTask, timeoutTask);
+        
+        if (completedTask == timeoutTask)
+        {
+            try
+            {
+                process.Kill();
+            }
+            catch { }
+            throw new Exception("Process timed out after 5 minutes");
+        }
+
+        AppendLog($"  Exit code: {process.ExitCode}");
 
         if (process.ExitCode != 0)
         {
@@ -615,6 +634,11 @@ public partial class MainWindowViewModel : ViewModelBase
         if (File.Exists(expectedOutputFile))
         {
             candidate.OutputFilePath = expectedOutputFile;
+            AppendLog($"  Output: {Path.GetFileName(expectedOutputFile)}");
+        }
+        else
+        {
+            AppendLog($"  WARNING: Output file not found: {Path.GetFileName(expectedOutputFile)}");
         }
     }
 

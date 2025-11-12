@@ -9,7 +9,8 @@
         Icon="/Assets/avalonia-logo.ico"
         Title="Win32 to Intune Package Creator"
         Width="900" Height="700"
-        MinWidth="800" MinHeight="600">
+        MinWidth="800" MinHeight="900"
+        WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
@@ -262,15 +263,17 @@
                             <TextBlock Text="Select a folder containing subfolders with applications to package" 
                                        FontSize="12" 
                                        Foreground="#7F8C8D"/>
-                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnGap="10">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
                                 <TextBox Grid.Column="0" 
                                          Text="{Binding BatchParentFolder}"
                                          Watermark="Select parent folder containing app subfolders..."
-                                         IsReadOnly="True"/>
+                                         IsReadOnly="True"
+                                         Margin="0,0,10,0"/>
                                 <Button Grid.Column="1" 
                                         Content="Browse..."
                                         Command="{Binding BrowseBatchFolderCommand}"
-                                        Width="100"/>
+                                        Width="100"
+                                        Margin="0,0,10,0"/>
                                 <Button Grid.Column="2" 
                                         Content="Scan Folders"
                                         Command="{Binding ScanBatchFoldersCommand}"
