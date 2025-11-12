@@ -55,7 +55,31 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private ObservableCollection<AppPackageCandidate> _batchCandidates = new();
 
+    [ObservableProperty]
+    private bool _hasBatchCandidates = false;
+
+    public int ReadyCount => BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
+    public int NeedsAttentionCount => BatchCandidates.Count(c => c.Status == PackageStatus.NeedsAttention);
+    public int SkippedCount => BatchCandidates.Count(c => c.Status == PackageStatus.Skipped);
+
+    // Intune Upload Properties
+    [ObservableProperty]
+    private ObservableCollection<IntuneUploadCandidate> _uploadCandidates = new();
+
+    [ObservableProperty]
+    private string _graphAccessToken = string.Empty;
+
+    [ObservableProperty]
+    private string? _graphConnectionStatus;
+
+    [ObservableProperty]
+    private string _graphConnectionStatusColor = "Gray";
+
+    [ObservableProperty]
+    private string _uploadStatusText = string.Empty;
+
     private readonly IntuneToolDownloader _toolDownloader;
+    private readonly IntuneGraphService _intuneGraphService;
     private static readonly string[] InstallerExtensions = { ".msi", ".exe", ".cmd", ".bat" };
 
     public Window? MainWindow { get; set; }
@@ -65,6 +89,8 @@ public partial class MainWindowViewModel : ViewModelBase
         _toolDownloader = new IntuneToolDownloader();
         _toolDownloader.StatusChanged += OnToolDownloaderStatusChanged;
         _toolDownloader.ProgressChanged += OnToolDownloaderProgressChanged;
+
+        _intuneGraphService = new IntuneGraphService();
 
         // Check tool availability on startup
         _ = InitializeToolAsync();
@@ -256,7 +282,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var sourceFolder = SourceFolder.TrimEnd('\\', '/');
         var outputFolder = OutputFolder.TrimEnd('\\', '/');
 
-        var arguments = $"-c \"{sourceFolder}\" -s \"{SetupFile}\" -o \"{outputFolder}\"";
+        var arguments = $"-c \"{sourceFolder}\" -s \"{SetupFile}\" -o \"{outputFolder}\" -q";
 
         if (!string.IsNullOrWhiteSpace(CatalogFolder))
         {
@@ -370,6 +396,90 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
+    [RelayCommand]
+    private async Task SelectInstallerForCandidate(AppPackageCandidate candidate)
+    {
+        if (MainWindow?.StorageProvider is not { } storageProvider) return;
+
+        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = $"Select Setup File for {candidate.FolderName}",
+            AllowMultiple = false,
+            SuggestedStartLocation = await storageProvider.TryGetFolderFromPathAsync(candidate.FolderPath),
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("Executable Files")
+                {
+                    Patterns = new[] { "*.exe", "*.msi", "*.cmd", "*.bat" }
+                },
+                new FilePickerFileType("All Files")
+                {
+                    Patterns = new[] { "*.*" }
+                }
+            }
+        });
+
+        if (files.Count > 0)
+        {
+            candidate.SelectedInstaller = files[0].Path.LocalPath;
+            candidate.Status = PackageStatus.Ready;
+            candidate.ErrorMessage = null;
+            AppendLog($"Manually selected installer for {candidate.FolderName}: {Path.GetFileName(candidate.SelectedInstaller)}");
+
+            // Update status counts
+            var readyCount = BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
+            var needsAttentionCount = BatchCandidates.Count(c => c.Status == PackageStatus.NeedsAttention);
+            BatchStatusText = $"{readyCount} ready, {needsAttentionCount} need attention";
+
+            ProcessBatchCommand.NotifyCanExecuteChanged();
+            UpdateBatchCounts();
+        }
+    }
+
+    [RelayCommand]
+    private void SkipCandidate(AppPackageCandidate candidate)
+    {
+        candidate.Status = PackageStatus.Skipped;
+        candidate.ErrorMessage = "Skipped by user";
+        AppendLog($"Skipped: {candidate.FolderName}");
+
+        // Update status counts
+        var readyCount = BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
+        var needsAttentionCount = BatchCandidates.Count(c => c.Status == PackageStatus.NeedsAttention);
+        var skippedCount = BatchCandidates.Count(c => c.Status == PackageStatus.Skipped);
+        BatchStatusText = $"{readyCount} ready, {needsAttentionCount} need attention, {skippedCount} skipped";
+
+        ProcessBatchCommand.NotifyCanExecuteChanged();
+        UpdateBatchCounts();
+    }
+
+    private void UpdateBatchCounts()
+    {
+        OnPropertyChanged(nameof(ReadyCount));
+        OnPropertyChanged(nameof(NeedsAttentionCount));
+        OnPropertyChanged(nameof(SkippedCount));
+    }
+
+    private async Task ShowBatchReviewDialog()
+    {
+        var dialog = new Views.BatchReviewDialog
+        {
+            DataContext = this
+        };
+
+        if (MainWindow != null)
+        {
+            await dialog.ShowDialog(MainWindow);
+        }
+    }
+
+    [RelayCommand]
+    private void CloseReviewDialog()
+    {
+        // This will be called from the dialog to close it
+        // The actual closing is handled by the view
+    }
+
     [RelayCommand(CanExecute = nameof(CanScanBatchFolders))]
     private async Task ScanBatchFolders()
     {
@@ -381,6 +491,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         IsProcessing = true;
         BatchCandidates.Clear();
+        HasBatchCandidates = false;
         LogOutput = string.Empty;
         AppendLog("Scanning for applications...");
         AppendLog(new string('-', 80));
@@ -450,6 +561,13 @@ public partial class MainWindowViewModel : ViewModelBase
             AppendLog($"  Needs attention: {needsAttentionCount}");
 
             BatchStatusText = $"{readyCount} ready, {needsAttentionCount} need attention";
+            HasBatchCandidates = BatchCandidates.Count > 0;
+
+            // Show review dialog if there are candidates
+            if (BatchCandidates.Count > 0)
+            {
+                await ShowBatchReviewDialog();
+            }
         }
         catch (Exception ex)
         {
@@ -566,8 +684,13 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task ProcessSingleBatchApp(string toolPath, AppPackageCandidate candidate)
     {
         var sourceFolder = candidate.FolderPath.TrimEnd('\\', '/');
-        var outputFolder = BatchOutputFolder.TrimEnd('\\', '/');
-        var arguments = $"-c \"{sourceFolder}\" -s \"{candidate.SelectedInstaller}\" -o \"{outputFolder}\"";
+        var baseOutputFolder = BatchOutputFolder.TrimEnd('\\', '/');
+        
+        // Create a unique output subfolder for this app to prevent filename collisions
+        var appOutputFolder = Path.Combine(baseOutputFolder, candidate.FolderName);
+        Directory.CreateDirectory(appOutputFolder);
+        
+        var arguments = $"-c \"{sourceFolder}\" -s \"{candidate.SelectedInstaller}\" -o \"{appOutputFolder}\" -q";
 
         AppendLog($"  Command: {Path.GetFileName(toolPath)} {arguments}");
 
@@ -604,6 +727,14 @@ public partial class MainWindowViewModel : ViewModelBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        // Automatically send Enter key to handle "Press any key to continue" prompt
+        try
+        {
+            await process.StandardInput.WriteLineAsync();
+            await process.StandardInput.FlushAsync();
+        }
+        catch { }
+
         // Add timeout to prevent hanging indefinitely (5 minutes)
         var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5));
         var processTask = process.WaitForExitAsync();
@@ -629,12 +760,12 @@ public partial class MainWindowViewModel : ViewModelBase
 
         // Verify output file was created
         var setupFileName = Path.GetFileNameWithoutExtension(candidate.SelectedInstaller);
-        var expectedOutputFile = Path.Combine(BatchOutputFolder, $"{setupFileName}.intunewin");
+        var expectedOutputFile = Path.Combine(appOutputFolder, $"{setupFileName}.intunewin");
 
         if (File.Exists(expectedOutputFile))
         {
             candidate.OutputFilePath = expectedOutputFile;
-            AppendLog($"  Output: {Path.GetFileName(expectedOutputFile)}");
+            AppendLog($"  Output: {candidate.FolderName}\\{Path.GetFileName(expectedOutputFile)}");
         }
         else
         {
@@ -660,4 +791,140 @@ public partial class MainWindowViewModel : ViewModelBase
     }
     partial void OnBatchParentFolderChanged(string value) => ScanBatchFoldersCommand.NotifyCanExecuteChanged();
     partial void OnBatchOutputFolderChanged(string value) => ProcessBatchCommand.NotifyCanExecuteChanged();
+
+    // Intune Upload Methods
+
+    [RelayCommand]
+    private async Task TestGraphConnection()
+    {
+        if (string.IsNullOrWhiteSpace(GraphAccessToken))
+        {
+            GraphConnectionStatus = "Please enter an access token";
+            GraphConnectionStatusColor = "#E74C3C";
+            return;
+        }
+
+        GraphConnectionStatus = "Testing connection...";
+        GraphConnectionStatusColor = "Gray";
+
+        try
+        {
+            _intuneGraphService.InitializeWithAccessToken(GraphAccessToken);
+            var (success, message) = await _intuneGraphService.TestConnectionAsync();
+
+            GraphConnectionStatus = message;
+            GraphConnectionStatusColor = success ? "#27AE60" : "#E74C3C";
+        }
+        catch (Exception ex)
+        {
+            GraphConnectionStatus = $"Error: {ex.Message}";
+            GraphConnectionStatusColor = "#E74C3C";
+        }
+    }
+
+    [RelayCommand]
+    public async Task ShowIntuneUploadDialog()
+    {
+        // Gather all successfully created .intunewin files from batch processing
+        UploadCandidates.Clear();
+
+        foreach (var candidate in BatchCandidates.Where(c => !string.IsNullOrEmpty(c.OutputFilePath) && File.Exists(c.OutputFilePath!)))
+        {
+            var uploadCandidate = new IntuneUploadCandidate
+            {
+                DisplayName = candidate.FolderName, // Use folder name as initial display name
+                FolderName = candidate.FolderName,
+                PackageFilePath = candidate.OutputFilePath!,
+                UploadStatus = "Ready"
+            };
+
+            UploadCandidates.Add(uploadCandidate);
+        }
+
+        if (UploadCandidates.Count == 0)
+        {
+            AppendLog("No packages available to upload");
+            return;
+        }
+
+        UploadStatusText = $"{UploadCandidates.Count} package(s) ready";
+
+        // Show the upload dialog
+        var dialog = new Views.IntuneUploadDialog
+        {
+            DataContext = this
+        };
+
+        if (MainWindow != null)
+        {
+            await dialog.ShowDialog(MainWindow);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStartUpload))]
+    private async Task StartIntuneUpload()
+    {
+        if (string.IsNullOrWhiteSpace(GraphAccessToken))
+        {
+            GraphConnectionStatus = "Please configure your access token first";
+            GraphConnectionStatusColor = "#E74C3C";
+            return;
+        }
+
+        IsProcessing = true;
+        AppendLog("");
+        AppendLog("Starting Intune upload...");
+        AppendLog(new string('-', 80));
+
+        _intuneGraphService.InitializeWithAccessToken(GraphAccessToken);
+
+        int successCount = 0;
+        int failedCount = 0;
+
+        foreach (var candidate in UploadCandidates)
+        {
+            candidate.UploadStatus = "Uploading...";
+            UploadStatusText = $"Uploading {candidate.DisplayName}...";
+
+            AppendLog("");
+            AppendLog($"Uploading: {candidate.DisplayName}");
+
+            var (success, message, appId) = await _intuneGraphService.UploadWin32AppAsync(
+                candidate.PackageFilePath,
+                candidate.DisplayName,
+                $"Uploaded from {candidate.FolderName}",
+                AppendLog);
+
+            if (success)
+            {
+                candidate.UploadStatus = "✓ Uploaded";
+                candidate.IntuneAppId = appId;
+                successCount++;
+            }
+            else
+            {
+                candidate.UploadStatus = $"✗ Failed";
+                AppendLog($"[FAILED] {message}");
+                failedCount++;
+            }
+        }
+
+        IsProcessing = false;
+        AppendLog("");
+        AppendLog(new string('-', 80));
+        AppendLog($"Upload complete:");
+        AppendLog($"  Success: {successCount}/{UploadCandidates.Count}");
+        AppendLog($"  Failed: {failedCount}/{UploadCandidates.Count}");
+
+        UploadStatusText = $"Complete: {successCount} uploaded, {failedCount} failed";
+    }
+
+    private bool CanStartUpload()
+    {
+        return !IsProcessing && 
+               UploadCandidates.Any() && 
+               !string.IsNullOrWhiteSpace(GraphAccessToken);
+    }
+
+    partial void OnGraphAccessTokenChanged(string value) => StartIntuneUploadCommand.NotifyCanExecuteChanged();
 }

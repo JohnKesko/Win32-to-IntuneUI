@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Win32_to_IntuneUI.ViewModels"
+        xmlns:local="using:Win32_to_IntuneUI.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
@@ -15,6 +16,44 @@
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
+
+    <Window.Styles>
+        <!-- Blue Button Style -->
+        <Style Selector="Button.blue">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.blue:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2980B9"/>
+        </Style>
+        <Style Selector="Button.blue:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#21618C"/>
+        </Style>
+
+        <!-- Green Button Style -->
+        <Style Selector="Button.green">
+            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.green:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#229954"/>
+        </Style>
+        <Style Selector="Button.green:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1E8449"/>
+        </Style>
+
+        <!-- Orange Button Style -->
+        <Style Selector="Button.orange">
+            <Setter Property="Background" Value="#E67E22"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.orange:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#D35400"/>
+        </Style>
+        <Style Selector="Button.orange:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#BA4A00"/>
+        </Style>
+    </Window.Styles>
 
     <Grid Margin="20" RowDefinitions="Auto,*">
         
@@ -230,9 +269,8 @@
                            Foreground="#7F8C8D"/>
                 <Button Grid.Column="1" 
                         Content="Create Package"
+                        Classes="blue"
                         Command="{Binding CreatePackageCommand}"
-                        Background="#3498DB"
-                        Foreground="White"
                         FontWeight="SemiBold"
                         Padding="30,12"
                         CornerRadius="6"
@@ -245,10 +283,41 @@
             
             <!-- Batch Processing Tab -->
             <TabItem Header="Batch Processing">
-                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+                    
+                    <!-- Instructions -->
+                    <Border Grid.Row="0"
+                            Background="#E8F4F8" 
+                            BorderBrush="#3498DB" 
+                            BorderThickness="1" 
+                            CornerRadius="8" 
+                            Padding="15"
+                            Margin="0,0,0,20">
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="Batch Processing Workflow:" 
+                                       FontWeight="SemiBold" 
+                                       FontSize="13"
+                                       Foreground="#2C3E50"/>
+                            <TextBlock Text="1. Select the parent folder containing your application subfolders" 
+                                       FontSize="12" 
+                                       Foreground="#34495E"/>
+                            <TextBlock Text="2. Click 'Scan Folders' - a review dialog will appear" 
+                                       FontSize="12" 
+                                       Foreground="#34495E"/>
+                            <TextBlock Text="3. In the dialog, manually select installers for items that need attention or skip them" 
+                                       FontSize="12" 
+                                       Foreground="#34495E"/>
+                            <TextBlock Text="4. Close the dialog, then select the output folder where packages will be saved" 
+                                       FontSize="12" 
+                                       Foreground="#34495E"/>
+                            <TextBlock Text="5. Click 'Process Batch' to create all packages" 
+                                       FontSize="12" 
+                                       Foreground="#34495E"/>
+                        </StackPanel>
+                    </Border>
                     
                     <!-- Batch Folder Selection -->
-                    <Border Grid.Row="0"
+                    <Border Grid.Row="1"
                             Background="White" 
                             BorderBrush="#E0E0E0" 
                             BorderThickness="1" 
@@ -256,7 +325,7 @@
                             Padding="20"
                             Margin="0,0,0,20">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Parent Folder *" 
+                            <TextBlock Text="Step 1: Parent Folder" 
                                        FontWeight="SemiBold" 
                                        FontSize="14"
                                        Foreground="#2C3E50"/>
@@ -275,19 +344,18 @@
                                         Width="100"
                                         Margin="0,0,10,0"/>
                                 <Button Grid.Column="2" 
-                                        Content="Scan Folders"
+                                        Content="Step 2: Scan Folders"
+                                        Classes="green"
                                         Command="{Binding ScanBatchFoldersCommand}"
-                                        Background="#27AE60"
-                                        Foreground="White"
                                         FontWeight="SemiBold"
-                                        Width="120"
+                                        Width="150"
                                         IsEnabled="{Binding !IsProcessing}"/>
                             </Grid>
                         </StackPanel>
                     </Border>
                     
                     <!-- Batch Output Folder -->
-                    <Border Grid.Row="1"
+                    <Border Grid.Row="2"
                             Background="White" 
                             BorderBrush="#E0E0E0" 
                             BorderThickness="1" 
@@ -295,7 +363,7 @@
                             Padding="20"
                             Margin="0,0,0,20">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Batch Output Folder *" 
+                            <TextBlock Text="Step 4: Output Folder" 
                                        FontWeight="SemiBold" 
                                        FontSize="14"
                                        Foreground="#2C3E50"/>
@@ -316,7 +384,7 @@
                     </Border>
 
                     <!-- Log Output Section -->
-                    <Border Grid.Row="2"
+                    <Border Grid.Row="3"
                             Background="White" 
                             BorderBrush="#E0E0E0" 
                             BorderThickness="1" 
@@ -331,7 +399,7 @@
                                     BorderBrush="#E0E0E0" 
                                     BorderThickness="1" 
                                     CornerRadius="4"
-                                    Height="300">
+                                    Height="200">
                                 <ScrollViewer>
                                     <TextBox Text="{Binding LogOutput}"
                                              IsReadOnly="True"
@@ -347,22 +415,31 @@
                     </Border>
 
                     <!-- Batch Action Buttons -->
-                    <Border Grid.Row="3" 
+                    <Border Grid.Row="4" 
                             Background="#F5F5F5" 
                             Padding="20" 
                             CornerRadius="8"
                             Margin="0,20,0,0">
-                        <Grid ColumnDefinitions="*,Auto">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
                             <TextBlock Grid.Column="0" 
                                        Text="{Binding BatchStatusText}" 
                                        VerticalAlignment="Center"
                                        FontSize="12"
                                        Foreground="#7F8C8D"/>
                             <Button Grid.Column="1" 
-                                    Content="Process Batch"
+                                    Content="Upload to Intune"
+                                    Classes="blue"
+                                    Command="{Binding ShowIntuneUploadDialogCommand}"
+                                    FontWeight="SemiBold"
+                                    Padding="30,12"
+                                    CornerRadius="6"
+                                    FontSize="14"
+                                    Margin="0,0,10,0"
+                                    IsEnabled="{Binding !IsProcessing}"/>
+                            <Button Grid.Column="2" 
+                                    Content="Step 5: Process Batch"
+                                    Classes="orange"
                                     Command="{Binding ProcessBatchCommand}"
-                                    Background="#E67E22"
-                                    Foreground="White"
                                     FontWeight="SemiBold"
                                     Padding="30,12"
                                     CornerRadius="6"

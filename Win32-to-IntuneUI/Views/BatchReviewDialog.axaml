@@ -1,0 +1,164 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Win32_to_IntuneUI.ViewModels"
+        xmlns:local="using:Win32_to_IntuneUI.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+        x:Class="Win32_to_IntuneUI.Views.BatchReviewDialog"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Review Scanned Applications"
+        Width="1000" Height="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Window.Styles>
+        <!-- Blue Button Style -->
+        <Style Selector="Button.blue">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.blue:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2980B9"/>
+        </Style>
+        <Style Selector="Button.blue:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#21618C"/>
+        </Style>
+
+        <!-- Gray Button Style -->
+        <Style Selector="Button.gray">
+            <Setter Property="Background" Value="#95A5A6"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.gray:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#7F8C8D"/>
+        </Style>
+        <Style Selector="Button.gray:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5D6D7E"/>
+        </Style>
+
+        <!-- Green Button Style -->
+        <Style Selector="Button.green">
+            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button.green:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#229954"/>
+        </Style>
+        <Style Selector="Button.green:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1E8449"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid Margin="20" RowDefinitions="Auto,*,Auto">
+        
+        <!-- Header -->
+        <Border Grid.Row="0" 
+                Background="#E8F4F8" 
+                Padding="20" 
+                CornerRadius="8"
+                Margin="0,0,0,20">
+            <StackPanel Spacing="10">
+                <TextBlock Text="Review Scanned Applications" 
+                           FontSize="20" 
+                           FontWeight="SemiBold"
+                           Foreground="#2C3E50"/>
+                <TextBlock Text="Applications marked as 'NeedsAttention' require you to manually select an installer file. Click 'Select Installer' to browse for the correct file, or 'Skip' to exclude the application from batch processing." 
+                           FontSize="13" 
+                           Foreground="#34495E"
+                           TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding BatchStatusText}" 
+                           FontSize="14" 
+                           FontWeight="Medium"
+                           Foreground="#E67E22"
+                           Margin="0,5,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- DataGrid -->
+        <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding BatchCandidates}"
+                  AutoGenerateColumns="False"
+                  CanUserReorderColumns="False"
+                  CanUserResizeColumns="True"
+                  CanUserSortColumns="True"
+                  GridLinesVisibility="All"
+                  HeadersVisibility="Column"
+                  Margin="0,0,0,20">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Application" 
+                                    Binding="{Binding FolderName}" 
+                                    Width="2*"/>
+                <DataGridTextColumn Header="Status" 
+                                    Binding="{Binding Status}" 
+                                    Width="*"/>
+                <DataGridTextColumn Header="Installer" 
+                                    Binding="{Binding SelectedInstaller}" 
+                                    Width="2*"/>
+                <DataGridTextColumn Header="Message" 
+                                    Binding="{Binding ErrorMessage}" 
+                                    Width="1.5*"/>
+                <DataGridTemplateColumn Header="Action" Width="Auto">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Button Content="Select Installer"
+                                        Classes="blue"
+                                        Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).SelectInstallerForCandidateCommand}"
+                                        CommandParameter="{Binding}"
+                                        IsVisible="{Binding NeedsUserInput}"
+                                        Padding="10,5"
+                                        FontSize="12"/>
+                                <Button Content="Skip"
+                                        Classes="gray"
+                                        Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).SkipCandidateCommand}"
+                                        CommandParameter="{Binding}"
+                                        IsVisible="{Binding NeedsUserInput}"
+                                        Padding="10,5"
+                                        FontSize="12"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Action Buttons -->
+        <Border Grid.Row="2" 
+                Background="#F5F5F5" 
+                Padding="20" 
+                CornerRadius="8"
+                Margin="0,20,0,0">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Grid.Column="0" 
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="#7F8C8D">
+                    <Run Text="Ready to process: "/>
+                    <Run Text="{Binding ReadyCount}" FontWeight="SemiBold"/>
+                    <Run Text=" | Needs attention: "/>
+                    <Run Text="{Binding NeedsAttentionCount}" FontWeight="SemiBold"/>
+                    <Run Text=" | Skipped: "/>
+                    <Run Text="{Binding SkippedCount}" FontWeight="SemiBold"/>
+                </TextBlock>
+                <Button Grid.Column="1" 
+                        Content="Cancel"
+                        Click="CancelButton_Click"
+                        Padding="20,10"
+                        Margin="0,0,10,0"
+                        CornerRadius="6"
+                        FontSize="13"/>
+                <Button Grid.Column="2" 
+                        Content="Continue"
+                        Classes="green"
+                        Click="ContinueButton_Click"
+                        FontWeight="SemiBold"
+                        Padding="20,10"
+                        CornerRadius="6"
+                        FontSize="13"/>
+            </Grid>
+        </Border>
+        
+    </Grid>
+
+</Window>
