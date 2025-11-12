@@ -229,6 +229,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private async Task RunIntuneWinAppUtil(string toolPath)
     {
+        // The IntuneWinAppUtil.exe requires .NET Framework 4.7.2 and only runs on Windows
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException(
+                "The Microsoft Win32 Content Prep Tool (IntuneWinAppUtil.exe) only runs on Windows. " +
+                "This tool requires .NET Framework 4.7.2 which is Windows-only.");
+        }
+
         var arguments = $"-c \"{SourceFolder}\" -s \"{SetupFile}\" -o \"{OutputFolder}\"";
 
         if (!string.IsNullOrWhiteSpace(CatalogFolder))
@@ -238,8 +246,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "mono", // On macOS, we need to use mono to run .exe files
-            Arguments = $"\"{toolPath}\" {arguments}",
+            FileName = toolPath,
+            Arguments = arguments,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
