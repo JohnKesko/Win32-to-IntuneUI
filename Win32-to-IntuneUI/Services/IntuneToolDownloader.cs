@@ -7,7 +7,6 @@ namespace Win32_to_IntuneUI.Services;
 
 public class IntuneToolDownloader
 {
-    private const string GithubRepoUrl = "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool";
     private const string RawFileUrl = "https://raw.githubusercontent.com/microsoft/Microsoft-Win32-Content-Prep-Tool/master/IntuneWinAppUtil.exe";
 
     private static readonly string ToolDirectory = Path.Combine(
@@ -36,6 +35,13 @@ public class IntuneToolDownloader
     /// </summary>
     public async Task<bool> EnsureToolAvailableAsync()
     {
+        // Check if running on Windows
+        if (!OperatingSystem.IsWindows())
+        {
+            OnStatusChanged("IntuneWinAppUtil.exe requires Windows - running in UI preview mode");
+            return false;
+        }
+
         if (IsToolAvailable())
         {
             OnStatusChanged("IntuneWinAppUtil.exe found locally");
@@ -148,13 +154,11 @@ public class IntuneToolDownloader
     {
         try
         {
-            if (File.Exists(ToolPath))
-            {
-                File.Delete(ToolPath);
-                OnStatusChanged("Local tool deleted");
-                return true;
-            }
-            return false;
+            if (!File.Exists(ToolPath)) return false;
+
+            File.Delete(ToolPath);
+            OnStatusChanged("Local tool deleted");
+            return true;
         }
         catch (Exception ex)
         {

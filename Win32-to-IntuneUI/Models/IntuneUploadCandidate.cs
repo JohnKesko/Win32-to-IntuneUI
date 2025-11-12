@@ -6,6 +6,9 @@ namespace Win32_to_IntuneUI.Models;
 public partial class IntuneUploadCandidate : ObservableObject
 {
     [ObservableProperty]
+    private bool _isSelected = true; // Selected by default
+
+    [ObservableProperty]
     private string _displayName = string.Empty;
 
     [ObservableProperty]
@@ -35,7 +38,7 @@ public partial class IntuneUploadCandidate : ObservableObject
                 return $"{bytes / 1024.0:F1} KB";
             if (bytes < 1024 * 1024 * 1024)
                 return $"{bytes / (1024.0 * 1024):F1} MB";
-            
+
             return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
         }
     }

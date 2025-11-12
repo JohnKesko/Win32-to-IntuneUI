@@ -16,68 +16,34 @@ namespace Win32_to_IntuneUI.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    [ObservableProperty]
-    private string _sourceFolder = string.Empty;
-
-    [ObservableProperty]
-    private string _setupFile = string.Empty;
-
-    [ObservableProperty]
-    private string _outputFolder = string.Empty;
-
-    [ObservableProperty]
-    private string _catalogFolder = string.Empty;
-
-    [ObservableProperty]
-    private bool _isProcessing = false;
-
-    [ObservableProperty]
-    private string _logOutput = string.Empty;
-
-    [ObservableProperty]
-    private double _progressValue = 0;
-
-    [ObservableProperty]
-    private bool _isProgressVisible = false;
-
-    [ObservableProperty]
-    private string _toolStatus = "Checking tool availability...";
-
-    [ObservableProperty]
-    private string _batchParentFolder = string.Empty;
-
-    [ObservableProperty]
-    private string _batchOutputFolder = string.Empty;
-
-    [ObservableProperty]
-    private string _batchStatusText = "Scan folders to begin batch processing";
-
-    [ObservableProperty]
-    private ObservableCollection<AppPackageCandidate> _batchCandidates = new();
-
-    [ObservableProperty]
-    private bool _hasBatchCandidates = false;
+    [ObservableProperty] private string _sourceFolder = string.Empty;
+    [ObservableProperty] private string _setupFile = string.Empty;
+    [ObservableProperty] private string _outputFolder = string.Empty;
+    [ObservableProperty] private string _catalogFolder = string.Empty;
+    [ObservableProperty] private string _installFolder = string.Empty;
+    [ObservableProperty] private bool _isProcessing = false;
+    [ObservableProperty] private string _logOutput = string.Empty;
+    [ObservableProperty] private double _progressValue = 0;
+    [ObservableProperty] private bool _isProgressVisible = false;
+    [ObservableProperty] private bool _isIndeterminate = false;
+    [ObservableProperty] private string _toolStatus = "Checking tool availability...";
+    [ObservableProperty] private string _batchParentFolder = string.Empty;
+    [ObservableProperty] private string _batchOutputFolder = string.Empty;
+    [ObservableProperty] private string _batchStatusText = "Scan folders to begin batch processing";
+    [ObservableProperty] private ObservableCollection<AppPackageCandidate> _batchCandidates = new();
+    [ObservableProperty] private bool _hasBatchCandidates = false;
 
     public int ReadyCount => BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
     public int NeedsAttentionCount => BatchCandidates.Count(c => c.Status == PackageStatus.NeedsAttention);
     public int SkippedCount => BatchCandidates.Count(c => c.Status == PackageStatus.Skipped);
 
     // Intune Upload Properties
-    [ObservableProperty]
-    private ObservableCollection<IntuneUploadCandidate> _uploadCandidates = new();
-
-    [ObservableProperty]
-    private string _graphAccessToken = string.Empty;
-
-    [ObservableProperty]
-    private string? _graphConnectionStatus;
-
-    [ObservableProperty]
-    private string _graphConnectionStatusColor = "Gray";
-
-    [ObservableProperty]
-    private string _uploadStatusText = string.Empty;
-
+    [ObservableProperty] private ObservableCollection<IntuneUploadCandidate> _uploadCandidates = [];
+    [ObservableProperty] private string _graphAccessToken = string.Empty;
+    [ObservableProperty] private string? _graphConnectionStatus;
+    [ObservableProperty] private string _graphConnectionStatusColor = "Gray";
+    [ObservableProperty] private string _uploadStatusText = string.Empty;
+    public string UploadSelectionCount => $"{UploadCandidates.Count(c => c.IsSelected)} of {UploadCandidates.Count} selected";
     private readonly IntuneToolDownloader _toolDownloader;
     private readonly IntuneGraphService _intuneGraphService;
     private static readonly string[] InstallerExtensions = { ".msi", ".exe", ".cmd", ".bat" };
@@ -99,6 +65,15 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task InitializeToolAsync()
     {
         AppendLog("Initializing...");
+
+        // Check if running on non-Windows platform
+        if (!OperatingSystem.IsWindows())
+        {
+            ToolStatus = "ℹ UI Preview Mode (Windows required for packaging)";
+            AppendLog("Running on macOS/Linux - UI preview mode only");
+            AppendLog("Package creation requires Windows and IntuneWinAppUtil.exe");
+            return;
+        }
 
         var isAvailable = await _toolDownloader.EnsureToolAvailableAsync();
 
@@ -266,6 +241,57 @@ public partial class MainWindowViewModel : ViewModelBase
                !string.IsNullOrWhiteSpace(SetupFile) &&
                !string.IsNullOrWhiteSpace(OutputFolder) &&
                !IsProcessing;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUploadSinglePackage))]
+    private async Task UploadSinglePackage()
+    {
+        // Check if there's a recently created package in the output folder
+        var setupFileName = Path.GetFileNameWithoutExtension(SetupFile);
+        var expectedOutputFile = Path.Combine(OutputFolder, $"{setupFileName}.intunewin");
+
+        if (!File.Exists(expectedOutputFile))
+        {
+            AppendLog("ERROR: No .intunewin package found. Please create a package first.");
+            return;
+        }
+
+        // Create an upload candidate for the single file
+        UploadCandidates.Clear();
+
+        var uploadCandidate = new IntuneUploadCandidate
+        {
+            DisplayName = setupFileName, // Use installer name as initial display name
+            FolderName = Path.GetFileName(SourceFolder),
+            PackageFilePath = expectedOutputFile,
+            UploadStatus = "Ready",
+            IsSelected = true
+        };
+
+        UploadCandidates.Add(uploadCandidate);
+        UploadStatusText = "1 package ready";
+
+        // Show the upload dialog
+        var dialog = new Views.IntuneUploadDialog
+        {
+            DataContext = this
+        };
+
+        if (MainWindow != null)
+        {
+            await dialog.ShowDialog(MainWindow);
+        }
+    }
+
+    private bool CanUploadSinglePackage()
+    {
+        if (string.IsNullOrWhiteSpace(SetupFile) || string.IsNullOrWhiteSpace(OutputFolder))
+            return false;
+
+        var setupFileName = Path.GetFileNameWithoutExtension(SetupFile);
+        var expectedOutputFile = Path.Combine(OutputFolder, $"{setupFileName}.intunewin");
+
+        return File.Exists(expectedOutputFile) && !IsProcessing;
     }
 
     private async Task RunIntuneWinAppUtil(string toolPath)
@@ -685,11 +711,11 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         var sourceFolder = candidate.FolderPath.TrimEnd('\\', '/');
         var baseOutputFolder = BatchOutputFolder.TrimEnd('\\', '/');
-        
+
         // Create a unique output subfolder for this app to prevent filename collisions
         var appOutputFolder = Path.Combine(baseOutputFolder, candidate.FolderName);
         Directory.CreateDirectory(appOutputFolder);
-        
+
         var arguments = $"-c \"{sourceFolder}\" -s \"{candidate.SelectedInstaller}\" -o \"{appOutputFolder}\" -q";
 
         AppendLog($"  Command: {Path.GetFileName(toolPath)} {arguments}");
@@ -738,9 +764,9 @@ public partial class MainWindowViewModel : ViewModelBase
         // Add timeout to prevent hanging indefinitely (5 minutes)
         var timeoutTask = Task.Delay(TimeSpan.FromMinutes(5));
         var processTask = process.WaitForExitAsync();
-        
+
         var completedTask = await Task.WhenAny(processTask, timeoutTask);
-        
+
         if (completedTask == timeoutTask)
         {
             try
@@ -781,8 +807,16 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     partial void OnSourceFolderChanged(string value) => CreatePackageCommand.NotifyCanExecuteChanged();
-    partial void OnSetupFileChanged(string value) => CreatePackageCommand.NotifyCanExecuteChanged();
-    partial void OnOutputFolderChanged(string value) => CreatePackageCommand.NotifyCanExecuteChanged();
+    partial void OnSetupFileChanged(string value)
+    {
+        CreatePackageCommand.NotifyCanExecuteChanged();
+        UploadSinglePackageCommand.NotifyCanExecuteChanged();
+    }
+    partial void OnOutputFolderChanged(string value)
+    {
+        CreatePackageCommand.NotifyCanExecuteChanged();
+        UploadSinglePackageCommand.NotifyCanExecuteChanged();
+    }
     partial void OnIsProcessingChanged(bool value)
     {
         CreatePackageCommand.NotifyCanExecuteChanged();
@@ -871,17 +905,27 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        // Filter to only selected candidates
+        var selectedCandidates = UploadCandidates.Where(c => c.IsSelected).ToList();
+
+        if (selectedCandidates.Count == 0)
+        {
+            AppendLog("No packages selected for upload");
+            return;
+        }
+
         IsProcessing = true;
         AppendLog("");
-        AppendLog("Starting Intune upload...");
+        AppendLog($"Starting Intune upload for {selectedCandidates.Count} selected package(s)...");
         AppendLog(new string('-', 80));
 
         _intuneGraphService.InitializeWithAccessToken(GraphAccessToken);
 
         int successCount = 0;
         int failedCount = 0;
+        int skippedCount = UploadCandidates.Count - selectedCandidates.Count;
 
-        foreach (var candidate in UploadCandidates)
+        foreach (var candidate in selectedCandidates)
         {
             candidate.UploadStatus = "Uploading...";
             UploadStatusText = $"Uploading {candidate.DisplayName}...";
@@ -909,22 +953,57 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         }
 
+        // Mark skipped items
+        foreach (var candidate in UploadCandidates.Where(c => !c.IsSelected))
+        {
+            if (candidate.UploadStatus == "Ready")
+            {
+                candidate.UploadStatus = "Skipped";
+            }
+        }
+
         IsProcessing = false;
         AppendLog("");
         AppendLog(new string('-', 80));
         AppendLog($"Upload complete:");
-        AppendLog($"  Success: {successCount}/{UploadCandidates.Count}");
-        AppendLog($"  Failed: {failedCount}/{UploadCandidates.Count}");
+        AppendLog($"  Success: {successCount}");
+        AppendLog($"  Failed: {failedCount}");
+        if (skippedCount > 0)
+        {
+            AppendLog($"  Skipped: {skippedCount}");
+        }
 
         UploadStatusText = $"Complete: {successCount} uploaded, {failedCount} failed";
     }
 
     private bool CanStartUpload()
     {
-        return !IsProcessing && 
-               UploadCandidates.Any() && 
+        return !IsProcessing &&
+               UploadCandidates.Any(c => c.IsSelected) &&
                !string.IsNullOrWhiteSpace(GraphAccessToken);
     }
 
     partial void OnGraphAccessTokenChanged(string value) => StartIntuneUploadCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void SelectAllUploadCandidates()
+    {
+        foreach (var candidate in UploadCandidates)
+        {
+            candidate.IsSelected = true;
+        }
+        OnPropertyChanged(nameof(UploadSelectionCount));
+        StartIntuneUploadCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void DeselectAllUploadCandidates()
+    {
+        foreach (var candidate in UploadCandidates)
+        {
+            candidate.IsSelected = false;
+        }
+        OnPropertyChanged(nameof(UploadSelectionCount));
+        StartIntuneUploadCommand.NotifyCanExecuteChanged();
+    }
 }

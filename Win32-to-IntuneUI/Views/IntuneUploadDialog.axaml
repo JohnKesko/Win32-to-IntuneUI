@@ -3,10 +3,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Win32_to_IntuneUI.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
         x:Class="Win32_to_IntuneUI.Views.IntuneUploadDialog"
         Title="Upload to Microsoft Intune"
-        Width="900" Height="600"
+        Width="1000" Height="600"
         WindowStartupLocation="CenterOwner"
         x:DataType="vm:MainWindowViewModel">
 
@@ -97,7 +97,31 @@
                 BorderBrush="LightGray" 
                 BorderThickness="1" 
                 CornerRadius="4">
-            <DataGrid ItemsSource="{Binding UploadCandidates}"
+            <Grid RowDefinitions="Auto,*">
+                <!-- Selection Controls -->
+                <Border Grid.Row="0"
+                        Background="#F8F9FA"
+                        BorderBrush="LightGray"
+                        BorderThickness="0,0,0,1"
+                        Padding="10">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Select All"
+                                Classes="gray"
+                                Command="{Binding SelectAllUploadCandidatesCommand}"
+                                Width="100"/>
+                        <Button Content="Deselect All"
+                                Classes="gray"
+                                Command="{Binding DeselectAllUploadCandidatesCommand}"
+                                Width="100"/>
+                        <TextBlock Text="{Binding UploadSelectionCount}"
+                                   VerticalAlignment="Center"
+                                   Foreground="Gray"
+                                   Margin="10,0,0,0"/>
+                    </StackPanel>
+                </Border>
+                
+            <DataGrid Grid.Row="1"
+                      ItemsSource="{Binding UploadCandidates}"
                       AutoGenerateColumns="False"
                       GridLinesVisibility="All"
                       IsReadOnly="False"
@@ -106,6 +130,12 @@
                       CanUserSortColumns="False">
                 
                 <DataGrid.Columns>
+                    <!-- Checkbox for Selection -->
+                    <DataGridCheckBoxColumn Header="Upload"
+                                            Binding="{Binding IsSelected}"
+                                            Width="100"
+                                            IsReadOnly="False"/>
+                    
                     <!-- Application Name (Editable) -->
                     <DataGridTextColumn Header="Application Name"
                                         Binding="{Binding DisplayName}"
@@ -137,6 +167,7 @@
                                         IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
+            </Grid>
         </Border>
 
         <!-- Action Buttons -->

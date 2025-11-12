@@ -1,8 +1,13 @@
+.github/
+.vscode/
+.idea/
+.DS_Store
+
 bin/
 obj/
+
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
-.DS_Store
-.github/
+
 README.md
