@@ -43,13 +43,11 @@ dotnet run --project Win32-to-IntuneUI/Win32-to-IntuneUI.csproj
 To create a self-contained executable for distribution:
 
 ```bash
-dotnet publish Win32-to-IntuneUI/Win32-to-IntuneUI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish -c Release
 ```
 
 The executable will be located at:  
 `Win32-to-IntuneUI/bin/Release/net10.0/win-x64/publish/Win32-to-IntuneUI.exe`
-
-For ARM64 Windows, use `-r win-arm64` instead.
 
 ## License
 
