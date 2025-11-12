@@ -13,6 +13,8 @@ Just download the SDK and install it. Nothing else needed.
 
 The application automatically downloads `IntuneWinAppUtil.exe` from Microsoft's repo on first launch. The tool is stored locally and does not need to be downloaded again.
 
+<img src="./img/img01.png" width="550" height="">
+
 ## Usage
 
 1. Launch the application
