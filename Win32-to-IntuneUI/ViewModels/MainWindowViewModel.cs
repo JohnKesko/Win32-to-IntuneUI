@@ -237,12 +237,21 @@ public partial class MainWindowViewModel : ViewModelBase
                 "This tool requires .NET Framework 4.7.2 which is Windows-only.");
         }
 
-        var arguments = $"-c \"{SourceFolder}\" -s \"{SetupFile}\" -o \"{OutputFolder}\"";
+        // Remove trailing backslashes from folder paths to avoid issues with quoted arguments
+        var sourceFolder = SourceFolder.TrimEnd('\\', '/');
+        var outputFolder = OutputFolder.TrimEnd('\\', '/');
+
+        var arguments = $"-c \"{sourceFolder}\" -s \"{SetupFile}\" -o \"{outputFolder}\"";
 
         if (!string.IsNullOrWhiteSpace(CatalogFolder))
         {
-            arguments += $" -a \"{CatalogFolder}\"";
+            var catalogFolder = CatalogFolder.TrimEnd('\\', '/');
+            arguments += $" -a \"{catalogFolder}\"";
         }
+
+        AppendLog($"Executing command:");
+        AppendLog($"{toolPath} {arguments}");
+        AppendLog("");
 
         var startInfo = new ProcessStartInfo
         {
@@ -278,9 +287,27 @@ public partial class MainWindowViewModel : ViewModelBase
 
         await process.WaitForExitAsync();
 
+        AppendLog("");
+        AppendLog($"Process exited with code: {process.ExitCode}");
+
         if (process.ExitCode != 0)
         {
             throw new Exception($"IntuneWinAppUtil exited with code {process.ExitCode}");
+        }
+
+        // Check if the .intunewin file was created
+        var setupFileName = Path.GetFileNameWithoutExtension(SetupFile);
+        var expectedOutputFile = Path.Combine(OutputFolder, $"{setupFileName}.intunewin");
+
+        if (File.Exists(expectedOutputFile))
+        {
+            var fileInfo = new FileInfo(expectedOutputFile);
+            AppendLog($"✓ Successfully created: {expectedOutputFile}");
+            AppendLog($"  File size: {fileInfo.Length:N0} bytes");
+        }
+        else
+        {
+            AppendLog($"⚠ Warning: Expected output file not found: {expectedOutputFile}");
         }
     }
 
