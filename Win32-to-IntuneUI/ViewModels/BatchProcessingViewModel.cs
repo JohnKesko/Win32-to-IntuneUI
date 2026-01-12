@@ -1,11 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Win32_to_IntuneUI.Models;
@@ -24,6 +28,13 @@ public partial class BatchProcessingViewModel : ViewModelBase
     [ObservableProperty] private bool _isProcessing;
     [ObservableProperty] private string _logOutput = string.Empty;
     [ObservableProperty] private string _toolStatus = string.Empty;
+
+    // Progress tracking
+    [ObservableProperty] private int _progressCurrent;
+    [ObservableProperty] private int _progressTotal;
+    [ObservableProperty] private string _progressText = string.Empty;
+    [ObservableProperty] private bool _isProgressVisible;
+    [ObservableProperty] private int _parallelTasks = 4; // Default parallel tasks
 
     public int ReadyCount => BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
     public int NeedsAttentionCount => BatchCandidates.Count(c => c.Status == PackageStatus.NeedsAttention);
@@ -175,6 +186,9 @@ public partial class BatchProcessingViewModel : ViewModelBase
                 var folderName = Path.GetFileName(subfolder);
                 AppendLog($"Scanning: {folderName}");
 
+                // Check for config file first
+                var configInstaller = TryReadInstallerFromConfig(subfolder);
+
                 var installers = Directory.GetFiles(subfolder, "*.*", SearchOption.TopDirectoryOnly)
                     .Where(f => InstallerExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                     .ToList();
@@ -186,7 +200,14 @@ public partial class BatchProcessingViewModel : ViewModelBase
                     DetectedInstallers = installers
                 };
 
-                if (installers.Count == 0)
+                // Priority 1: Config file specifies installer
+                if (configInstaller != null)
+                {
+                    candidate.SelectedInstaller = configInstaller;
+                    candidate.Status = PackageStatus.Ready;
+                    AppendLog($"  [OK] From config: {Path.GetFileName(configInstaller)}");
+                }
+                else if (installers.Count == 0)
                 {
                     candidate.Status = PackageStatus.NeedsAttention;
                     candidate.ErrorMessage = "No installer files found";
@@ -201,7 +222,7 @@ public partial class BatchProcessingViewModel : ViewModelBase
                 else
                 {
                     // Multiple installers - try to auto-select based on priority
-                    var autoSelected = TryAutoSelectInstaller(installers);
+                    var autoSelected = TryAutoSelectInstaller(installers, folderName);
                     if (autoSelected != null)
                     {
                         candidate.SelectedInstaller = autoSelected;
@@ -263,27 +284,91 @@ public partial class BatchProcessingViewModel : ViewModelBase
         }
     }
 
-    private static string? TryAutoSelectInstaller(System.Collections.Generic.List<string> installers)
+    /// <summary>
+    /// Try to read installer path from a config file in the folder
+    /// Supports: intuneconfig.json, package.json with "installer" field
+    /// </summary>
+    private static string? TryReadInstallerFromConfig(string folderPath)
     {
-        // Priority 1: .msi files
-        var msiFiles = installers.Where(f => f.EndsWith(".msi", StringComparison.OrdinalIgnoreCase)).ToList();
-        if (msiFiles.Count == 1) return msiFiles[0];
-
-        // Priority 2: Files with setup/install/installer in the name
-        var setupFiles = installers.Where(f =>
+        // Check for intuneconfig.json
+        var configPath = Path.Combine(folderPath, "intuneconfig.json");
+        if (File.Exists(configPath))
         {
-            var name = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-            return name.Contains("setup") || name.Contains("install");
-        }).ToList();
-        if (setupFiles.Count == 1) return setupFiles[0];
-
-        // Priority 3: Largest file
-        if (installers.Count > 0)
-        {
-            return installers.OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
+            try
+            {
+                var json = File.ReadAllText(configPath);
+                var config = JsonSerializer.Deserialize<IntuneConfigFile>(json);
+                if (!string.IsNullOrWhiteSpace(config?.Installer))
+                {
+                    var installerPath = Path.Combine(folderPath, config.Installer);
+                    if (File.Exists(installerPath))
+                    {
+                        return installerPath;
+                    }
+                }
+            }
+            catch { /* Ignore parse errors */ }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Improved auto-selection with more patterns and folder name matching
+    /// </summary>
+    private static string? TryAutoSelectInstaller(List<string> installers, string folderName)
+    {
+        if (installers.Count == 0) return null;
+
+        // Priority 1: Single .msi file (MSI is almost always the right choice)
+        var msiFiles = installers.Where(f => f.EndsWith(".msi", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (msiFiles.Count == 1) return msiFiles[0];
+
+        // Priority 2: PSADT Deploy-Application.exe
+        var psadtFile = installers.FirstOrDefault(f =>
+            Path.GetFileName(f).Equals("Deploy-Application.exe", StringComparison.OrdinalIgnoreCase));
+        if (psadtFile != null) return psadtFile;
+
+        // Priority 3: File name matches folder name (e.g., "7-Zip" folder with "7-Zip.msi")
+        var folderNameLower = folderName.ToLowerInvariant()
+            .Replace(" ", "").Replace("-", "").Replace("_", "");
+        var matchingFile = installers.FirstOrDefault(f =>
+        {
+            var fileName = Path.GetFileNameWithoutExtension(f).ToLowerInvariant()
+                .Replace(" ", "").Replace("-", "").Replace("_", "");
+            return fileName.Contains(folderNameLower) || folderNameLower.Contains(fileName);
+        });
+        if (matchingFile != null) return matchingFile;
+
+        // Priority 4: Files with setup/install/installer in the name
+        var setupPatterns = new[] { "setup", "install", "installer" };
+        var setupFiles = installers.Where(f =>
+        {
+            var name = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+            return setupPatterns.Any(p => name.Contains(p));
+        }).ToList();
+        if (setupFiles.Count == 1) return setupFiles[0];
+
+        // Priority 5: Prefer .exe over .msi if multiple, then by size
+        if (setupFiles.Count > 1)
+        {
+            // Prefer setup.exe pattern
+            var setupExe = setupFiles.FirstOrDefault(f =>
+                Path.GetFileName(f).Equals("setup.exe", StringComparison.OrdinalIgnoreCase));
+            if (setupExe != null) return setupExe;
+
+            return setupFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+        }
+
+        // Priority 6: Largest .exe file (likely the main installer)
+        var exeFiles = installers.Where(f => f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (exeFiles.Count > 0)
+        {
+            return exeFiles.OrderByDescending(f => new FileInfo(f).Length).First();
+        }
+
+        // Priority 7: Any largest file
+        return installers.OrderByDescending(f => new FileInfo(f).Length).FirstOrDefault();
     }
 
     private bool CanScanBatchFolders()
@@ -316,52 +401,130 @@ public partial class BatchProcessingViewModel : ViewModelBase
         }
 
         IsProcessing = true;
+        IsProgressVisible = true;
         LogOutput = string.Empty;
-        AppendLog("Starting batch processing...");
-        AppendLog(new string('-', 80));
 
         var processableCandidates = BatchCandidates.Where(c => c.Status == PackageStatus.Ready).ToList();
-        var totalCount = processableCandidates.Count;
+        ProgressTotal = processableCandidates.Count;
+        ProgressCurrent = 0;
+
+        AppendLog($"Starting parallel batch processing ({ParallelTasks} concurrent tasks)...");
+        AppendLog($"Processing {ProgressTotal} application(s)");
+        AppendLog(new string('-', 80));
+
         var successCount = 0;
         var failedCount = 0;
+        var processedCount = 0;
+        var startTime = DateTime.Now;
 
-        foreach (var candidate in processableCandidates)
+        // Use semaphore to limit concurrent processes
+        using var semaphore = new SemaphoreSlim(ParallelTasks);
+        var lockObj = new object();
+
+        var tasks = processableCandidates.Select(async candidate =>
         {
+            await semaphore.WaitAsync();
             try
             {
-                candidate.Status = PackageStatus.Processing;
-                AppendLog("");
-                AppendLog($"Processing: {candidate.FolderName}");
-                AppendLog($"  Installer: {Path.GetFileName(candidate.SelectedInstaller)}");
+                // Update status on UI thread
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.Status = PackageStatus.Processing;
+                });
+
+                AppendLogThreadSafe($"[START] {candidate.FolderName}");
 
                 await ProcessSingleBatchApp(toolPath, candidate);
 
-                candidate.Status = PackageStatus.Success;
-                successCount++;
-                AppendLog($"  [SUCCESS] Package created for {candidate.FolderName}");
+                lock (lockObj)
+                {
+                    successCount++;
+                    processedCount++;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.Status = PackageStatus.Success;
+                    ProgressCurrent = processedCount;
+                    UpdateProgressText(processedCount, ProgressTotal, startTime);
+                });
+
+                AppendLogThreadSafe($"[SUCCESS] {candidate.FolderName}");
             }
             catch (Exception ex)
             {
-                candidate.Status = PackageStatus.Failed;
-                candidate.ErrorMessage = ex.Message;
-                failedCount++;
-                AppendLog($"  [FAILED] {candidate.FolderName}: {ex.Message}");
+                lock (lockObj)
+                {
+                    failedCount++;
+                    processedCount++;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.Status = PackageStatus.Failed;
+                    candidate.ErrorMessage = ex.Message;
+                    ProgressCurrent = processedCount;
+                    UpdateProgressText(processedCount, ProgressTotal, startTime);
+                });
+
+                AppendLogThreadSafe($"[FAILED] {candidate.FolderName}: {ex.Message}");
             }
-        }
+            finally
+            {
+                semaphore.Release();
+            }
+        }).ToList();
+
+        await Task.WhenAll(tasks);
+
+        var elapsed = DateTime.Now - startTime;
 
         IsProcessing = false;
+        IsProgressVisible = false;
         AppendLog("");
         AppendLog(new string('-', 80));
-        AppendLog($"Batch processing complete:");
-        AppendLog($"  Success: {successCount}/{totalCount}");
-        AppendLog($"  Failed: {failedCount}/{totalCount}");
+        AppendLog($"Batch processing complete in {elapsed:mm\\:ss}:");
+        AppendLog($"  Success: {successCount}/{ProgressTotal}");
+        AppendLog($"  Failed: {failedCount}/{ProgressTotal}");
+        AppendLog($"  Average: {(elapsed.TotalSeconds / ProgressTotal):F1}s per package");
 
         BatchStatusText = $"Complete: {successCount} success, {failedCount} failed";
+        ProgressText = string.Empty;
 
         // Notify that batch is complete
         BatchCompleted?.Invoke(this, BatchCandidates);
 
         ProcessBatchCommand.NotifyCanExecuteChanged();
+    }
+
+    private void UpdateProgressText(int current, int total, DateTime startTime)
+    {
+        var elapsed = DateTime.Now - startTime;
+        var percentage = (int)((double)current / total * 100);
+
+        if (current > 0)
+        {
+            var avgPerItem = elapsed.TotalSeconds / current;
+            var remaining = TimeSpan.FromSeconds(avgPerItem * (total - current));
+            ProgressText = $"Processing {current}/{total} ({percentage}%) - ~{remaining:mm\\:ss} remaining";
+        }
+        else
+        {
+            ProgressText = $"Processing {current}/{total} ({percentage}%)";
+        }
+    }
+
+    private readonly object _logLock = new();
+
+    private void AppendLogThreadSafe(string message)
+    {
+        lock (_logLock)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                LogOutput += $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}";
+            });
+        }
     }
 
     private async Task ProcessSingleBatchApp(string toolPath, AppPackageCandidate candidate)

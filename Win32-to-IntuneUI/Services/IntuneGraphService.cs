@@ -106,7 +106,7 @@ public class IntuneGraphService
     }
 
     /// <summary>
-    /// Test the connection to Microsoft Graph
+    /// Test the connection to Microsoft Graph and verify required permissions
     /// </summary>
     public async Task<(bool Success, string Message)> TestConnectionAsync()
     {
@@ -115,30 +115,48 @@ public class IntuneGraphService
 
         try
         {
-            // Test by getting organization info
-            var response = await _httpClient.GetAsync($"{GraphBaseUrl}/organization");
+            // Step 1: Test basic connectivity by getting organization info
+            var orgResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/organization");
 
-            if (response.IsSuccessStatusCode)
+            if (!orgResponse.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync();
-                var orgResponse = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(content);
-
-                if (orgResponse?.Value?.Length > 0)
+                if (orgResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    var orgName = orgResponse.Value[0].DisplayName ?? "Unknown Organization";
-                    return (true, $"Connected to: {orgName}");
+                    return (false, "Unauthorized - token may be expired or invalid");
+                }
+                var errorContent = await orgResponse.Content.ReadAsStringAsync();
+                return (false, $"Connection failed: {orgResponse.StatusCode}");
+            }
+
+            var orgContent = await orgResponse.Content.ReadAsStringAsync();
+            var orgData = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(orgContent);
+            var orgName = orgData?.Value?.FirstOrDefault()?.DisplayName ?? "Unknown Organization";
+
+            // Step 2: Test DeviceManagementApps.ReadWrite.All permission
+            // Try to list mobile apps - this requires the correct permission
+            var appsResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/deviceAppManagement/mobileApps?$top=1");
+
+            if (!appsResponse.IsSuccessStatusCode)
+            {
+                if (appsResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    return (false,
+                        $"Connected to: {orgName}\n\n" +
+                        "⚠️ Missing required permission!\n" +
+                        "The app needs 'DeviceManagementApps.ReadWrite.All' permission.\n\n" +
+                        "To fix:\n" +
+                        "1. Go to Azure Portal → Microsoft Entra ID → App registrations\n" +
+                        "2. Select your app → API permissions → Add permission\n" +
+                        "3. Microsoft Graph → Application permissions\n" +
+                        "4. Add: DeviceManagementApps.ReadWrite.All\n" +
+                        "5. Grant admin consent");
                 }
 
-                return (true, "Connected successfully");
+                var errorContent = await appsResponse.Content.ReadAsStringAsync();
+                return (false, $"Connected to {orgName}, but permission check failed: {appsResponse.StatusCode}");
             }
 
-            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                return (false, "Unauthorized - token may be expired or invalid");
-            }
-
-            var errorContent = await response.Content.ReadAsStringAsync();
-            return (false, $"Connection failed: {response.StatusCode} - {errorContent}");
+            return (true, $"✓ Connected to: {orgName}\n✓ Intune app permissions verified");
         }
         catch (Exception ex)
         {

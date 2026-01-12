@@ -71,15 +71,15 @@ public partial class MainWindowViewModel : ViewModelBase
 
         // First, check for recently created package from Single Package tab
         var singlePackagePath = SinglePackage.GetLastCreatedPackagePath();
-        
+
         // Then check for batch results
-        var hasBatchResults = BatchProcessing.BatchCandidates.Any(c => 
+        var hasBatchResults = BatchProcessing.BatchCandidates.Any(c =>
             !string.IsNullOrEmpty(c.OutputFilePath) && File.Exists(c.OutputFilePath!));
 
         if (singlePackagePath != null)
         {
             // Pre-populate with the single package
-            IntuneUpload.PopulateFromSinglePackage(singlePackagePath, 
+            IntuneUpload.PopulateFromSinglePackage(singlePackagePath,
                 Path.GetFileNameWithoutExtension(singlePackagePath));
             SinglePackage.AppendLog($"Ready to upload: {Path.GetFileName(singlePackagePath)}");
         }

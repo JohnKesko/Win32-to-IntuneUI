@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Win32_to_IntuneUI.Models;
@@ -29,10 +31,18 @@ public partial class IntuneUploadViewModel : ViewModelBase
     [ObservableProperty] private bool _isProcessing;
     [ObservableProperty] private string _logOutput = string.Empty;
 
+    // Progress tracking
+    [ObservableProperty] private int _progressCurrent;
+    [ObservableProperty] private int _progressTotal;
+    [ObservableProperty] private string _progressText = string.Empty;
+    [ObservableProperty] private bool _isProgressVisible;
+    [ObservableProperty] private int _parallelUploads = 3; // Default parallel uploads (conservative for API rate limits)
+
     public string UploadSelectionCount => $"{UploadCandidates.Count(c => c.IsSelected)} of {UploadCandidates.Count} selected";
 
     private readonly IntuneGraphService _intuneGraphService;
     private string? _accessToken;
+    private readonly object _logLock = new();
 
     public Window? MainWindow { get; set; }
 
@@ -199,42 +209,68 @@ public partial class IntuneUploadViewModel : ViewModelBase
         }
 
         IsProcessing = true;
+        IsProgressVisible = true;
+        ProgressTotal = selectedCandidates.Count;
+        ProgressCurrent = 0;
+
+        var startTime = DateTime.Now;
         AppendLog("");
-        AppendLog($"Starting Intune upload for {selectedCandidates.Count} selected package(s)...");
+        AppendLog($"Starting parallel Intune upload ({ParallelUploads} concurrent) for {selectedCandidates.Count} package(s)...");
         AppendLog(new string('-', 80));
 
-        // Token is already set from authentication
         int successCount = 0;
         int failedCount = 0;
+        int processedCount = 0;
         int skippedCount = UploadCandidates.Count - selectedCandidates.Count;
 
-        foreach (var candidate in selectedCandidates)
+        // Use semaphore to limit concurrent uploads (API rate limiting)
+        using var semaphore = new SemaphoreSlim(ParallelUploads);
+        var lockObj = new object();
+
+        var tasks = selectedCandidates.Select(async candidate =>
         {
-            candidate.UploadStatus = "Uploading...";
-            UploadStatusText = $"Uploading {candidate.DisplayName}...";
-
-            AppendLog("");
-            AppendLog($"Uploading: {candidate.DisplayName}");
-
-            var (success, message, appId) = await _intuneGraphService.UploadWin32AppAsync(
-                candidate.PackageFilePath,
-                candidate.DisplayName,
-                $"Uploaded from {candidate.FolderName}",
-                AppendLog);
-
-            if (success)
+            await semaphore.WaitAsync();
+            try
             {
-                candidate.UploadStatus = "✓ Uploaded";
-                candidate.IntuneAppId = appId;
-                successCount++;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.UploadStatus = "Uploading...";
+                });
+
+                AppendLogThreadSafe($"[START] {candidate.DisplayName}");
+
+                var (success, message, appId) = await _intuneGraphService.UploadWin32AppAsync(
+                    candidate.PackageFilePath,
+                    candidate.DisplayName,
+                    $"Uploaded from {candidate.FolderName}",
+                    msg => AppendLogThreadSafe($"  [{candidate.DisplayName}] {msg}"));
+
+                lock (lockObj)
+                {
+                    processedCount++;
+                    if (success) successCount++;
+                    else failedCount++;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.UploadStatus = success ? "✓ Uploaded" : "✗ Failed";
+                    candidate.IntuneAppId = appId;
+                    ProgressCurrent = processedCount;
+                    UpdateProgressText(processedCount, ProgressTotal, startTime);
+                });
+
+                AppendLogThreadSafe(success
+                    ? $"[SUCCESS] {candidate.DisplayName}"
+                    : $"[FAILED] {candidate.DisplayName}: {message}");
             }
-            else
+            finally
             {
-                candidate.UploadStatus = "✗ Failed";
-                AppendLog($"[FAILED] {message}");
-                failedCount++;
+                semaphore.Release();
             }
-        }
+        }).ToList();
+
+        await Task.WhenAll(tasks);
 
         // Mark skipped items
         foreach (var candidate in UploadCandidates.Where(c => !c.IsSelected))
@@ -245,10 +281,15 @@ public partial class IntuneUploadViewModel : ViewModelBase
             }
         }
 
+        var elapsed = DateTime.Now - startTime;
+
         IsProcessing = false;
+        IsProgressVisible = false;
+        ProgressText = string.Empty;
+
         AppendLog("");
         AppendLog(new string('-', 80));
-        AppendLog($"Upload complete:");
+        AppendLog($"Upload complete in {elapsed:mm\\:ss}:");
         AppendLog($"  Success: {successCount}");
         AppendLog($"  Failed: {failedCount}");
         if (skippedCount > 0)
@@ -257,6 +298,34 @@ public partial class IntuneUploadViewModel : ViewModelBase
         }
 
         UploadStatusText = $"Complete: {successCount} uploaded, {failedCount} failed";
+    }
+
+    private void UpdateProgressText(int current, int total, DateTime startTime)
+    {
+        var elapsed = DateTime.Now - startTime;
+        var percentage = (int)((double)current / total * 100);
+
+        if (current > 0)
+        {
+            var avgPerItem = elapsed.TotalSeconds / current;
+            var remaining = TimeSpan.FromSeconds(avgPerItem * (total - current));
+            ProgressText = $"Uploading {current}/{total} ({percentage}%) - ~{remaining:mm\\:ss} remaining";
+        }
+        else
+        {
+            ProgressText = $"Uploading {current}/{total} ({percentage}%)";
+        }
+    }
+
+    private void AppendLogThreadSafe(string message)
+    {
+        lock (_logLock)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                LogOutput += $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}";
+            });
+        }
     }
 
     private bool CanStartUpload()
