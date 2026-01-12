@@ -217,8 +217,23 @@ public partial class MainWindowViewModel : ViewModelBase
                 {
                     if (latestVersion > currentVersion)
                     {
-                        IsUpdateAvailable = true;
-                        UpdateStatus = $"v{latestVersionStr} available";
+                        UpdateStatus = $"Downloading v{latestVersionStr}...";
+
+                        // Actually download the update so Restart button works
+                        var downloaded = await UpdateService.CheckAndDownloadAsync(
+                            status => UpdateStatus = status,
+                            error => UpdateErrorDetails = error
+                        );
+
+                        if (downloaded)
+                        {
+                            IsUpdateAvailable = true;
+                            UpdateStatus = $"v{latestVersionStr} ready - restart to apply";
+                        }
+                        else
+                        {
+                            UpdateStatus = $"v{latestVersionStr} available (download failed)";
+                        }
                         return;
                     }
                 }

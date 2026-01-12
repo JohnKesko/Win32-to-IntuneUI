@@ -26,7 +26,8 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void OnLogUpdated(object? sender, string logContent)
     {
-        LogOutput = logContent;
+        // Ensure we update on the UI thread
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => LogOutput = logContent);
     }
 
     [RelayCommand]
