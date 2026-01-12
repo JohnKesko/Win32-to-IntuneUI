@@ -6,7 +6,7 @@
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
         <!-- Version - single source of truth -->
-        <Version>1.0.13</Version>
+        <Version>1.0.14</Version>
         <AssemblyVersion>$(Version)</AssemblyVersion>
         <FileVersion>$(Version)</FileVersion>
         <InformationalVersion>$(Version)</InformationalVersion>
@@ -40,8 +40,8 @@
         <PublishSingleFile>true</PublishSingleFile>
         <SelfContained>true</SelfContained>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-        <PublishTrimmed>true</PublishTrimmed>
-        <TrimMode>link</TrimMode>
+        <!-- Trimming disabled: Azure.Identity and Microsoft.Graph require reflection -->
+        <PublishTrimmed>false</PublishTrimmed>
     </PropertyGroup>
 
     <ItemGroup>
