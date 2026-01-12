@@ -53,6 +53,12 @@
         <Style Selector="Button.orange:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="#BA4A00"/>
         </Style>
+
+        <!-- TabItem Header Style -->
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="12,8"/>
+        </Style>
     </Window.Styles>
 
     <Grid Margin="20" RowDefinitions="Auto,*">
@@ -237,33 +243,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Catalog Folder Section (Optional) -->
-                            <Border Background="White" 
-                                    BorderBrush="#E0E0E0" 
-                                    BorderThickness="1" 
-                                    CornerRadius="8" 
-                                    Padding="20">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Text="Catalog Folder (Optional)" 
-                                               FontWeight="SemiBold" 
-                                               FontSize="14"
-                                               Foreground="#2C3E50"/>
-                                    <TextBlock Text="Folder containing the catalog files for the Win32 app" 
-                                               FontSize="12" 
-                                               Foreground="#7F8C8D"/>
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBox Grid.Column="0" 
-                                                 Text="{Binding CatalogFolder}"
-                                                 Watermark="Select catalog folder (optional)..."
-                                                 Margin="0,0,10,0"/>
-                                        <Button Grid.Column="1" 
-                                                Content="Browse..."
-                                                Command="{Binding BrowseCatalogFolderCommand}"
-                                                Width="100"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-
                             <!-- Progress Section -->
                             <Border Background="White" 
                                     BorderBrush="#E0E0E0" 
@@ -281,36 +260,6 @@
                                                  Foreground="#3498DB"
                                                  Minimum="0" 
                                                  Maximum="100"/>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Log Output Section -->
-                            <Border Background="White" 
-                                    BorderBrush="#E0E0E0" 
-                                    BorderThickness="1" 
-                                    CornerRadius="8" 
-                                    Padding="20">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Text="Output Log" 
-                                               FontWeight="SemiBold" 
-                                               FontSize="14"
-                                               Foreground="#2C3E50"/>
-                                    <Border Background="#F8F9FA" 
-                                            BorderBrush="#E0E0E0" 
-                                            BorderThickness="1" 
-                                            CornerRadius="4"
-                                            Height="200">
-                                        <ScrollViewer>
-                                            <TextBox Text="{Binding LogOutput}"
-                                                     IsReadOnly="True"
-                                                     Background="Transparent"
-                                                     BorderThickness="0"
-                                                     FontFamily="Consolas,Monaco,Courier New"
-                                                     FontSize="12"
-                                                     TextWrapping="Wrap"
-                                                     AcceptsReturn="True"/>
-                                        </ScrollViewer>
-                                    </Border>
                                 </StackPanel>
                             </Border>
 
@@ -334,7 +283,7 @@
                                     Classes="green"
                                     Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).UploadToIntuneCommand}"
                                     FontWeight="SemiBold"
-                                    Padding="20,12"
+                                    Padding="24,12"
                                     CornerRadius="6"
                                     FontSize="14"
                                     Margin="0,0,10,0"/>
@@ -343,7 +292,7 @@
                                     Classes="blue"
                                     Command="{Binding CreatePackageCommand}"
                                     FontWeight="SemiBold"
-                                    Padding="30,12"
+                                    Padding="24,12"
                                     CornerRadius="6"
                                     FontSize="14"
                                     IsEnabled="{Binding !IsProcessing}"/>
@@ -354,16 +303,16 @@
             
             <!-- Batch Processing Tab -->
             <TabItem Header="Batch Processing">
-                <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" DataContext="{Binding BatchProcessing}">
+                <Grid RowDefinitions="*,Auto" DataContext="{Binding BatchProcessing}">
+                <ScrollViewer Grid.Row="0">
+                <StackPanel Spacing="20">
                     
                     <!-- Instructions -->
-                    <Border Grid.Row="0"
-                            Background="#E8F4F8" 
+                    <Border Background="#E8F4F8" 
                             BorderBrush="#3498DB" 
                             BorderThickness="1" 
                             CornerRadius="8" 
-                            Padding="15"
-                            Margin="0,0,0,20">
+                            Padding="15">
                         <StackPanel Spacing="5">
                             <TextBlock Text="Batch Processing Workflow:" 
                                        FontWeight="SemiBold" 
@@ -388,13 +337,11 @@
                     </Border>
                     
                     <!-- Batch Folder Selection -->
-                    <Border Grid.Row="1"
-                            Background="White" 
+                    <Border Background="White" 
                             BorderBrush="#E0E0E0" 
                             BorderThickness="1" 
                             CornerRadius="8" 
-                            Padding="20"
-                            Margin="0,0,0,20">
+                            Padding="20">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Parent Folder *" 
                                        FontWeight="SemiBold" 
@@ -426,13 +373,11 @@
                     </Border>
                     
                     <!-- Batch Output Folder -->
-                    <Border Grid.Row="2"
-                            Background="White" 
+                    <Border Background="White" 
                             BorderBrush="#E0E0E0" 
                             BorderThickness="1" 
                             CornerRadius="8" 
-                            Padding="20"
-                            Margin="0,0,0,20">
+                            Padding="20">
                         <StackPanel Spacing="10">
                             <TextBlock Text="Output Folder *" 
                                        FontWeight="SemiBold" 
@@ -454,39 +399,11 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Log Output Section -->
-                    <Border Grid.Row="3"
-                            Background="White" 
-                            BorderBrush="#E0E0E0" 
-                            BorderThickness="1" 
-                            CornerRadius="8" 
-                            Padding="20">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="Batch Processing Log" 
-                                       FontWeight="SemiBold" 
-                                       FontSize="14"
-                                       Foreground="#2C3E50"/>
-                            <Border Background="#F8F9FA" 
-                                    BorderBrush="#E0E0E0" 
-                                    BorderThickness="1" 
-                                    CornerRadius="4"
-                                    Height="200">
-                                <ScrollViewer>
-                                    <TextBox Text="{Binding LogOutput}"
-                                             IsReadOnly="True"
-                                             Background="Transparent"
-                                             BorderThickness="0"
-                                             FontFamily="Consolas,Monaco,Courier New"
-                                             FontSize="12"
-                                             TextWrapping="Wrap"
-                                             AcceptsReturn="True"/>
-                                </ScrollViewer>
-                            </Border>
-                        </StackPanel>
-                    </Border>
+                </StackPanel>
+                </ScrollViewer>
 
                     <!-- Batch Action Buttons -->
-                    <Border Grid.Row="4" 
+                    <Border Grid.Row="1" 
                             Background="#F5F5F5" 
                             Padding="20" 
                             CornerRadius="8"
@@ -502,7 +419,7 @@
                                     Classes="green"
                                     Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).UploadToIntuneCommand}"
                                     FontWeight="SemiBold"
-                                    Padding="30,12"
+                                    Padding="24,12"
                                     CornerRadius="6"
                                     FontSize="14"
                                     Margin="0,0,10,0"/>
@@ -511,10 +428,136 @@
                                     Classes="orange"
                                     Command="{Binding ProcessBatchCommand}"
                                     FontWeight="SemiBold"
-                                    Padding="30,12"
+                                    Padding="24,12"
                                     CornerRadius="6"
                                     FontSize="14"
                                     IsEnabled="{Binding !IsProcessing}"/>
+                        </Grid>
+                    </Border>
+                    
+                </Grid>
+            </TabItem>
+
+            <!-- Upload to Intune Tab -->
+            <TabItem Header="Upload to Intune">
+                <Grid RowDefinitions="Auto,*,Auto" DataContext="{Binding IntuneUpload}" Margin="0,10,0,0">
+                    
+                    <!-- Authentication Section -->
+                    <Border Grid.Row="0"
+                            Background="White" 
+                            BorderBrush="#E0E0E0" 
+                            BorderThickness="1" 
+                            CornerRadius="8" 
+                            Padding="20"
+                            Margin="0,0,0,15">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Microsoft Graph Authentication" 
+                                       FontWeight="SemiBold"
+                                       FontSize="14"
+                                       Foreground="#2C3E50"/>
+                            <TextBlock Text="Enter your Azure AD App Registration credentials to authenticate with Microsoft Graph."
+                                       Foreground="#7F8C8D"
+                                       FontSize="12"/>
+                            
+                            <!-- Credentials Grid -->
+                            <Grid ColumnDefinitions="120,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="10" ColumnSpacing="10">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tenant ID:" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TenantId}" Watermark="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+                                
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Client ID:" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ClientId}" Watermark="Application (client) ID"/>
+                                
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Client Secret:" VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ClientSecret}" Watermark="Client secret value" PasswordChar="•"/>
+                                <Button Grid.Row="2" Grid.Column="2" Content="Connect" Classes="blue" Command="{Binding TestGraphConnectionCommand}" Width="100"/>
+                            </Grid>
+                            
+                            <TextBlock Text="{Binding GraphConnectionStatus}"
+                                       Foreground="{Binding GraphConnectionStatusColor}"
+                                       IsVisible="{Binding !!GraphConnectionStatus}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Package List -->
+                    <Border Grid.Row="1"
+                            Background="White" 
+                            BorderBrush="#E0E0E0" 
+                            BorderThickness="1" 
+                            CornerRadius="8">
+                        <Grid RowDefinitions="Auto,*">
+                            <!-- Toolbar -->
+                            <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="10">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Add Packages..." Classes="blue" Command="{Binding BrowseForPackagesCommand}" Width="120"/>
+                                    <Button Content="Select All" Classes="gray" Command="{Binding SelectAllUploadCandidatesCommand}" Width="100"/>
+                                    <Button Content="Deselect All" Classes="gray" Command="{Binding DeselectAllUploadCandidatesCommand}" Width="100"/>
+                                    <TextBlock Text="{Binding UploadSelectionCount}" VerticalAlignment="Center" Foreground="#7F8C8D" Margin="10,0,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- DataGrid -->
+                            <DataGrid Grid.Row="1"
+                                      ItemsSource="{Binding UploadCandidates}"
+                                      AutoGenerateColumns="False"
+                                      GridLinesVisibility="Horizontal"
+                                      IsReadOnly="False"
+                                      CanUserReorderColumns="False"
+                                      CanUserResizeColumns="True"
+                                      HorizontalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridCheckBoxColumn Header="Upload" Binding="{Binding IsSelected}" Width="60"/>
+                                    <DataGridTextColumn Header="Application Name" Binding="{Binding DisplayName}" Width="180"/>
+                                    <DataGridTextColumn Header="Install Command" Binding="{Binding InstallCommand}" Width="200"/>
+                                    <DataGridTextColumn Header="Uninstall Command" Binding="{Binding UninstallCommand}" Width="200"/>
+                                    <DataGridTextColumn Header="Publisher" Binding="{Binding Publisher}" Width="120"/>
+                                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="150"/>
+                                    <DataGridTextColumn Header="Package File" Binding="{Binding PackageFileName}" Width="150" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Size" Binding="{Binding PackageFileSizeFormatted}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding UploadStatus}" Width="100" IsReadOnly="True"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Action Bar -->
+                    <Border Grid.Row="2" Margin="0,15,0,0">
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding UploadStatusText}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            <Button Grid.Column="1" Content="Show Log" Classes="gray" Command="{Binding ShowUploadLogCommand}" Width="100" Margin="0,0,10,0"/>
+                            <Button Grid.Column="2" Content="Start Upload" Classes="green" Command="{Binding StartIntuneUploadCommand}" Width="120" FontWeight="SemiBold"/>
+                        </Grid>
+                    </Border>
+                    
+                </Grid>
+            </TabItem>
+
+            <!-- Settings Tab -->
+            <TabItem Header="Settings">
+                <Grid RowDefinitions="*,Auto" Margin="20">
+                    
+                    <!-- Log Viewer -->
+                    <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="10">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="Application Log" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10"/>
+                            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                <TextBox Text="{Binding Settings.LogOutput}" 
+                                         IsReadOnly="True" 
+                                         FontFamily="Consolas,Menlo,Monaco,monospace" 
+                                         FontSize="11"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         AcceptsReturn="True"
+                                         TextWrapping="NoWrap"/>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+
+                    <!-- Action Buttons -->
+                    <Border Grid.Row="1" Margin="0,15,0,0">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBlock Grid.Column="0" Text="Logs from all tabs are consolidated here" VerticalAlignment="Center" Foreground="#666666"/>
+                            <Button Grid.Column="1" Content="Clear Log" Classes="gray" Command="{Binding Settings.ClearLogCommand}" Width="100" Margin="0,0,10,0"/>
+                            <Button Grid.Column="2" Content="Export Log" Classes="green" Command="{Binding Settings.ExportLogCommand}" Width="100"/>
                         </Grid>
                     </Border>
                     

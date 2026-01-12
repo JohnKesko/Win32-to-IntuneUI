@@ -154,43 +154,62 @@
                       IsReadOnly="False"
                       CanUserReorderColumns="False"
                       CanUserResizeColumns="True"
-                      CanUserSortColumns="False">
+                      CanUserSortColumns="False"
+                      HorizontalScrollBarVisibility="Auto">
                 
                 <DataGrid.Columns>
                     <!-- Checkbox for Selection -->
                     <DataGridCheckBoxColumn Header="Upload"
                                             Binding="{Binding IsSelected}"
-                                            Width="100"
+                                            Width="60"
                                             IsReadOnly="False"/>
                     
                     <!-- Application Name (Editable) -->
                     <DataGridTextColumn Header="Application Name"
                                         Binding="{Binding DisplayName}"
-                                        Width="2*"
+                                        Width="180"
                                         IsReadOnly="False"/>
                     
-                    <!-- Original Folder -->
-                    <DataGridTextColumn Header="Source Folder"
-                                        Binding="{Binding FolderName}"
-                                        Width="*"
-                                        IsReadOnly="True"/>
+                    <!-- Install Command (Editable) -->
+                    <DataGridTextColumn Header="Install Command"
+                                        Binding="{Binding InstallCommand}"
+                                        Width="200"
+                                        IsReadOnly="False"/>
+                    
+                    <!-- Uninstall Command (Editable) -->
+                    <DataGridTextColumn Header="Uninstall Command"
+                                        Binding="{Binding UninstallCommand}"
+                                        Width="200"
+                                        IsReadOnly="False"/>
+                    
+                    <!-- Publisher (Editable) -->
+                    <DataGridTextColumn Header="Publisher"
+                                        Binding="{Binding Publisher}"
+                                        Width="120"
+                                        IsReadOnly="False"/>
+                    
+                    <!-- Description (Editable) -->
+                    <DataGridTextColumn Header="Description"
+                                        Binding="{Binding Description}"
+                                        Width="150"
+                                        IsReadOnly="False"/>
                     
                     <!-- Package File -->
                     <DataGridTextColumn Header="Package File"
                                         Binding="{Binding PackageFileName}"
-                                        Width="*"
+                                        Width="150"
                                         IsReadOnly="True"/>
                     
                     <!-- File Size -->
                     <DataGridTextColumn Header="Size"
                                         Binding="{Binding PackageFileSizeFormatted}"
-                                        Width="100"
+                                        Width="80"
                                         IsReadOnly="True"/>
                     
                     <!-- Status -->
                     <DataGridTextColumn Header="Status"
                                         Binding="{Binding UploadStatus}"
-                                        Width="150"
+                                        Width="100"
                                         IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
@@ -207,6 +226,10 @@
                        VerticalAlignment="Center"
                        Margin="0,0,20,0"
                        FontWeight="SemiBold"/>
+            <Button Content="Show Log"
+                    Classes="gray"
+                    Command="{Binding ShowUploadLogCommand}"
+                    Width="100"/>
             <Button Content="Cancel"
                     Classes="gray"
                     Click="CancelButton_Click"

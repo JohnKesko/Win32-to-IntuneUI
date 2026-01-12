@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Win32_to_IntuneUI.ViewModels;
 
 namespace Win32_to_IntuneUI.Views;
 

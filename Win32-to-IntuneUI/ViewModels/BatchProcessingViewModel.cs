@@ -187,7 +187,14 @@ public partial class BatchProcessingViewModel : ViewModelBase
                 AppendLog($"Scanning: {folderName}");
 
                 // Check for config file first
-                var configInstaller = TryReadInstallerFromConfig(subfolder);
+                var (configInstaller, intuneConfig) = TryReadInstallerFromConfig(subfolder);
+
+                // Skip if config says to skip
+                if (intuneConfig?.Skip == true)
+                {
+                    AppendLog($"  [SKIP] Skipped via intuneconfig.json");
+                    continue;
+                }
 
                 var installers = Directory.GetFiles(subfolder, "*.*", SearchOption.TopDirectoryOnly)
                     .Where(f => InstallerExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
@@ -195,9 +202,10 @@ public partial class BatchProcessingViewModel : ViewModelBase
 
                 var candidate = new AppPackageCandidate
                 {
-                    FolderName = folderName,
+                    FolderName = intuneConfig?.DisplayName ?? folderName,
                     FolderPath = subfolder,
-                    DetectedInstallers = installers
+                    DetectedInstallers = installers,
+                    IntuneConfig = intuneConfig
                 };
 
                 // Priority 1: Config file specifies installer
@@ -288,7 +296,7 @@ public partial class BatchProcessingViewModel : ViewModelBase
     /// Try to read installer path from a config file in the folder
     /// Supports: intuneconfig.json, package.json with "installer" field
     /// </summary>
-    private static string? TryReadInstallerFromConfig(string folderPath)
+    private static (string? installerPath, IntuneConfigFile? config) TryReadInstallerFromConfig(string folderPath)
     {
         // Check for intuneconfig.json
         var configPath = Path.Combine(folderPath, "intuneconfig.json");
@@ -298,19 +306,24 @@ public partial class BatchProcessingViewModel : ViewModelBase
             {
                 var json = File.ReadAllText(configPath);
                 var config = JsonSerializer.Deserialize<IntuneConfigFile>(json);
-                if (!string.IsNullOrWhiteSpace(config?.Installer))
+                if (config != null)
                 {
-                    var installerPath = Path.Combine(folderPath, config.Installer);
-                    if (File.Exists(installerPath))
+                    string? installerPath = null;
+                    if (!string.IsNullOrWhiteSpace(config.Installer))
                     {
-                        return installerPath;
+                        var fullPath = Path.Combine(folderPath, config.Installer);
+                        if (File.Exists(fullPath))
+                        {
+                            installerPath = fullPath;
+                        }
                     }
+                    return (installerPath, config);
                 }
             }
             catch { /* Ignore parse errors */ }
         }
 
-        return null;
+        return (null, null);
     }
 
     /// <summary>
@@ -628,7 +641,8 @@ public partial class BatchProcessingViewModel : ViewModelBase
 
     public void AppendLog(string message)
     {
-        LogOutput += $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}";
+        // Route to centralized log service
+        AppLogService.Instance.Log("Batch", message);
     }
 
     partial void OnBatchParentFolderChanged(string value) => ScanBatchFoldersCommand.NotifyCanExecuteChanged();

@@ -69,6 +69,24 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready"
             };
 
+            // Apply config from intuneconfig.json if available
+            if (candidate.IntuneConfig != null)
+            {
+                var config = candidate.IntuneConfig;
+                if (!string.IsNullOrWhiteSpace(config.InstallCommand))
+                    uploadCandidate.InstallCommand = config.InstallCommand;
+                if (!string.IsNullOrWhiteSpace(config.UninstallCommand))
+                    uploadCandidate.UninstallCommand = config.UninstallCommand;
+                if (!string.IsNullOrWhiteSpace(config.Publisher))
+                    uploadCandidate.Publisher = config.Publisher;
+                if (!string.IsNullOrWhiteSpace(config.Description))
+                    uploadCandidate.Description = config.Description;
+            }
+
+            // Generate defaults for any fields not set by config
+            if (string.IsNullOrEmpty(uploadCandidate.InstallCommand))
+                uploadCandidate.GenerateDefaultCommands(candidate.SetupFileName);
+
             UploadCandidates.Add(uploadCandidate);
         }
 
@@ -96,6 +114,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready",
                 IsSelected = true
             };
+            uploadCandidate.GenerateDefaultCommands();
 
             UploadCandidates.Add(uploadCandidate);
             UploadStatusText = "1 package ready";
@@ -125,6 +144,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready",
                 IsSelected = true
             };
+            uploadCandidate.GenerateDefaultCommands();
 
             UploadCandidates.Add(uploadCandidate);
         }
@@ -134,6 +154,32 @@ public partial class IntuneUploadViewModel : ViewModelBase
             : "No valid packages found";
 
         OnPropertyChanged(nameof(UploadSelectionCount));
+    }
+
+    [RelayCommand]
+    private async Task BrowseForPackages()
+    {
+        if (MainWindow == null) return;
+
+        var storageProvider = MainWindow.StorageProvider;
+        var files = await storageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Select .intunewin packages",
+            AllowMultiple = true,
+            FileTypeFilter = new[]
+            {
+                new Avalonia.Platform.Storage.FilePickerFileType("Intune Win32 Package")
+                {
+                    Patterns = new[] { "*.intunewin" }
+                }
+            }
+        });
+
+        if (files.Count > 0)
+        {
+            var filePaths = files.Select(f => f.Path.LocalPath).ToList();
+            PopulateFromFiles(filePaths);
+        }
     }
 
     [RelayCommand]
@@ -256,6 +302,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 {
                     candidate.UploadStatus = success ? "✓ Uploaded" : "✗ Failed";
                     candidate.IntuneAppId = appId;
+                    candidate.ErrorMessage = success ? null : message;
                     ProgressCurrent = processedCount;
                     UpdateProgressText(processedCount, ProgressTotal, startTime);
                 });
@@ -357,8 +404,36 @@ public partial class IntuneUploadViewModel : ViewModelBase
         StartIntuneUploadCommand.NotifyCanExecuteChanged();
     }
 
+    [RelayCommand]
+    private async Task ShowUploadLog()
+    {
+        if (MainWindow == null) return;
+
+        var box = new Window
+        {
+            Title = "Upload Log",
+            Width = 700,
+            Height = 500,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new TextBox
+            {
+                Text = string.IsNullOrEmpty(LogOutput) ? "No log entries yet." : LogOutput,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(10),
+                FontFamily = new Avalonia.Media.FontFamily("Consolas, Courier New, monospace"),
+                FontSize = 12
+            }
+        };
+        await box.ShowDialog(MainWindow);
+    }
+
     public void AppendLog(string message)
     {
+        // Route to centralized log service
+        AppLogService.Instance.Log("Upload", message);
+        // Also keep local log for the Show Log dialog
         LogOutput += $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}";
     }
 

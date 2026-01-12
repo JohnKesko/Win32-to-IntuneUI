@@ -16,7 +16,6 @@ public partial class SinglePackageViewModel : ViewModelBase
     [ObservableProperty] private string _sourceFolder = string.Empty;
     [ObservableProperty] private string _setupFile = string.Empty;
     [ObservableProperty] private string _outputFolder = string.Empty;
-    [ObservableProperty] private string _catalogFolder = string.Empty;
     [ObservableProperty] private bool _isProcessing;
     [ObservableProperty] private string _logOutput = string.Empty;
     [ObservableProperty] private double _progressValue;
@@ -148,24 +147,6 @@ public partial class SinglePackageViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
-    private async Task BrowseCatalogFolder()
-    {
-        if (MainWindow?.StorageProvider is not { } storageProvider) return;
-
-        var folder = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "Select Catalog Folder (Optional)",
-            AllowMultiple = false
-        });
-
-        if (folder.Count > 0)
-        {
-            CatalogFolder = folder[0].Path.LocalPath;
-            AppendLog($"Catalog folder selected: {CatalogFolder}");
-        }
-    }
-
     [RelayCommand(CanExecute = nameof(CanCreatePackage))]
     private async Task CreatePackage()
     {
@@ -193,10 +174,6 @@ public partial class SinglePackageViewModel : ViewModelBase
             AppendLog($"Source folder: {SourceFolder}");
             AppendLog($"Setup file: {SetupFile}");
             AppendLog($"Output folder: {OutputFolder}");
-            if (!string.IsNullOrWhiteSpace(CatalogFolder))
-            {
-                AppendLog($"Catalog folder: {CatalogFolder}");
-            }
             AppendLog(new string('-', 80));
 
             await RunIntuneWinAppUtil(toolPath);
@@ -260,12 +237,6 @@ public partial class SinglePackageViewModel : ViewModelBase
         var outputFolder = OutputFolder.TrimEnd('\\', '/');
 
         var arguments = $"-c \"{sourceFolder}\" -s \"{SetupFile}\" -o \"{outputFolder}\" -q";
-
-        if (!string.IsNullOrWhiteSpace(CatalogFolder))
-        {
-            var catalogFolder = CatalogFolder.TrimEnd('\\', '/');
-            arguments += $" -a \"{catalogFolder}\"";
-        }
 
         AppendLog("Executing command:");
         AppendLog($"{toolPath} {arguments}");
@@ -331,7 +302,8 @@ public partial class SinglePackageViewModel : ViewModelBase
 
     public void AppendLog(string message)
     {
-        LogOutput += $"{DateTime.Now:HH:mm:ss} - {message}{Environment.NewLine}";
+        // Route to centralized log service
+        AppLogService.Instance.Log("Package", message);
     }
 
     partial void OnSourceFolderChanged(string value) => CreatePackageCommand.NotifyCanExecuteChanged();

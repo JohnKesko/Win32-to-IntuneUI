@@ -34,6 +34,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public IntuneUploadViewModel IntuneUpload { get; }
 
     /// <summary>
+    /// ViewModel for settings and log viewer
+    /// </summary>
+    public SettingsViewModel Settings { get; }
+
+    /// <summary>
     /// Current application version
     /// </summary>
     public string AppVersion { get; } = GetAppVersion();
@@ -94,6 +99,7 @@ public partial class MainWindowViewModel : ViewModelBase
             SinglePackage.MainWindow = value;
             BatchProcessing.MainWindow = value;
             IntuneUpload.MainWindow = value;
+            Settings.MainWindow = value;
         }
     }
 
@@ -102,6 +108,7 @@ public partial class MainWindowViewModel : ViewModelBase
         SinglePackage = new SinglePackageViewModel();
         BatchProcessing = new BatchProcessingViewModel();
         IntuneUpload = new IntuneUploadViewModel();
+        Settings = new SettingsViewModel();
 
         // Subscribe to events from child ViewModels
         BatchProcessing.BatchCompleted += (_, candidates) =>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Win32_to_IntuneUI.Models;
@@ -25,6 +26,18 @@ public partial class AppPackageCandidate : ObservableObject
 
     [ObservableProperty]
     private string? _outputFilePath;
+
+    /// <summary>
+    /// Configuration loaded from intuneconfig.json (if present)
+    /// </summary>
+    public IntuneConfigFile? IntuneConfig { get; set; }
+
+    /// <summary>
+    /// Gets the filename of the selected installer (without path)
+    /// </summary>
+    public string? SetupFileName => !string.IsNullOrEmpty(SelectedInstaller)
+        ? Path.GetFileName(SelectedInstaller)
+        : null;
 
     public bool CanProcess => Status == PackageStatus.Ready || Status == PackageStatus.Failed;
 
