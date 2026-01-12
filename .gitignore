@@ -1,4 +1,5 @@
 .vscode/
+.vs/
 .github/instructions/
 .idea/
 .DS_Store
