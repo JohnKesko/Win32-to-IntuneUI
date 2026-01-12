@@ -468,6 +468,9 @@ public class IntuneGraphService
 
         logCallback?.Invoke($"  Uploading in {totalBlocks} block(s)...");
 
+        // Use a separate HttpClient for Azure Storage (no Authorization header - SAS is in URL)
+        using var azureClient = new HttpClient();
+
         using var fileStream = File.OpenRead(filePath);
         var buffer = new byte[blockSize];
         var blockNumber = 0;
@@ -487,12 +490,12 @@ public class IntuneGraphService
             using var blockContent = new ByteArrayContent(actualBuffer);
             blockContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
-            // Use a request message to set per-request headers without modifying shared HttpClient defaults
+            // Use a request message to set per-request headers
             using var blockRequest = new HttpRequestMessage(HttpMethod.Put, blockUri);
             blockRequest.Headers.Add("x-ms-blob-type", "BlockBlob");
             blockRequest.Content = blockContent;
 
-            var blockResponse = await _httpClient.SendAsync(blockRequest);
+            var blockResponse = await azureClient.SendAsync(blockRequest);
             blockResponse.EnsureSuccessStatusCode();
 
             blockNumber++;
@@ -515,11 +518,10 @@ public class IntuneGraphService
         var commitUri = $"{azureStorageUri}&comp=blocklist";
         using var commitContent = new StringContent(blockListXml.ToString(), Encoding.UTF8, "application/xml");
 
-        // Reuse shared HttpClient with a request message
         using var commitRequest = new HttpRequestMessage(HttpMethod.Put, commitUri);
         commitRequest.Content = commitContent;
 
-        var commitResponse = await _httpClient.SendAsync(commitRequest);
+        var commitResponse = await azureClient.SendAsync(commitRequest);
         commitResponse.EnsureSuccessStatusCode();
     }
 
