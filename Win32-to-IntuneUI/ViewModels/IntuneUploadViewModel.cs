@@ -66,6 +66,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 DisplayName = candidate.FolderName,
                 FolderName = candidate.FolderName,
                 PackageFilePath = candidate.OutputFilePath!,
+                SourceFolderPath = candidate.FolderPath, // Pass source folder for script detection
                 UploadStatus = "Ready"
             };
 
@@ -83,9 +84,9 @@ public partial class IntuneUploadViewModel : ViewModelBase
                     uploadCandidate.Description = config.Description;
             }
 
-            // Generate defaults for any fields not set by config
+            // Detect scripts and generate commands for any fields not set by config
             if (string.IsNullOrEmpty(uploadCandidate.InstallCommand))
-                uploadCandidate.GenerateDefaultCommands(candidate.SetupFileName);
+                uploadCandidate.DetectAndGenerateCommands(candidate.SetupFileName);
 
             UploadCandidates.Add(uploadCandidate);
         }
@@ -106,15 +107,17 @@ public partial class IntuneUploadViewModel : ViewModelBase
 
         if (File.Exists(packagePath))
         {
+            var folderPath = Path.GetDirectoryName(packagePath) ?? "";
             var uploadCandidate = new IntuneUploadCandidate
             {
                 DisplayName = displayName,
-                FolderName = Path.GetDirectoryName(packagePath) ?? displayName,
+                FolderName = folderPath,
                 PackageFilePath = packagePath,
+                SourceFolderPath = folderPath, // For script detection
                 UploadStatus = "Ready",
                 IsSelected = true
             };
-            uploadCandidate.GenerateDefaultCommands();
+            uploadCandidate.DetectAndGenerateCommands();
 
             UploadCandidates.Add(uploadCandidate);
             UploadStatusText = "1 package ready";
@@ -137,15 +140,17 @@ public partial class IntuneUploadViewModel : ViewModelBase
 
         foreach (var filePath in filePaths.Where(File.Exists))
         {
+            var folderPath = Path.GetDirectoryName(filePath) ?? "";
             var uploadCandidate = new IntuneUploadCandidate
             {
                 DisplayName = Path.GetFileNameWithoutExtension(filePath),
-                FolderName = Path.GetDirectoryName(filePath) ?? "",
+                FolderName = folderPath,
                 PackageFilePath = filePath,
+                SourceFolderPath = folderPath, // For script detection
                 UploadStatus = "Ready",
                 IsSelected = true
             };
-            uploadCandidate.GenerateDefaultCommands();
+            uploadCandidate.DetectAndGenerateCommands();
 
             UploadCandidates.Add(uploadCandidate);
         }
@@ -290,7 +295,10 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 var (success, message, appId) = await _intuneGraphService.UploadWin32AppAsync(
                     candidate.PackageFilePath,
                     candidate.DisplayName,
-                    $"Uploaded from {candidate.FolderName}",
+                    candidate.Description ?? $"Uploaded from {candidate.FolderName}",
+                    candidate.InstallCommand ?? "",
+                    candidate.UninstallCommand ?? "",
+                    candidate.Publisher ?? "",
                     msg => AppendLogThreadSafe($"  [{candidate.DisplayName}] {msg}"));
 
                 lock (lockObj)

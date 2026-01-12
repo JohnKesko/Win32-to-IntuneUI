@@ -186,6 +186,9 @@ public class IntuneGraphService
         string intunewinPath,
         string displayName,
         string description = "",
+        string installCommand = "",
+        string uninstallCommand = "",
+        string publisher = "",
         Action<string>? logCallback = null)
     {
         if (string.IsNullOrWhiteSpace(_accessToken))
@@ -227,7 +230,7 @@ public class IntuneGraphService
 
             // Step 2: Create the Win32LobApp
             logCallback?.Invoke("Step 2: Creating app registration in Intune...");
-            var appId = await CreateWin32LobAppAsync(displayName, description, metadata);
+            var appId = await CreateWin32LobAppAsync(displayName, description, installCommand, uninstallCommand, publisher, metadata);
 
             if (string.IsNullOrEmpty(appId))
                 return (false, "Failed to create app in Intune", null);
@@ -306,25 +309,70 @@ public class IntuneGraphService
         }
     }
 
-    private async Task<string?> CreateWin32LobAppAsync(string displayName, string description, IntuneWinMetadata metadata)
+    private async Task<string?> CreateWin32LobAppAsync(
+        string displayName,
+        string description,
+        string installCommand,
+        string uninstallCommand,
+        string publisher,
+        IntuneWinMetadata metadata)
     {
-        // Determine install command based on file extension
         var fileName = metadata.FileName ?? "setup.exe";
         var extension = Path.GetExtension(fileName).ToLowerInvariant();
 
-        string installCommand;
-        string uninstallCommand;
-
-        if (extension == ".msi")
+        // Use provided commands, or generate defaults if empty
+        if (string.IsNullOrWhiteSpace(installCommand))
         {
-            installCommand = $"msiexec /i \"{fileName}\" /qn";
-            uninstallCommand = $"msiexec /x \"{metadata.MsiProductCode ?? fileName}\" /qn";
+            installCommand = extension == ".msi"
+                ? $"msiexec /i \"{fileName}\" /qn"
+                : $"\"{fileName}\" /S";
+        }
+
+        if (string.IsNullOrWhiteSpace(uninstallCommand))
+        {
+            uninstallCommand = extension == ".msi"
+                ? $"msiexec /x \"{metadata.MsiProductCode ?? fileName}\" /qn"
+                : $"\"{fileName}\" /uninstall /S";
+        }
+
+        if (string.IsNullOrWhiteSpace(publisher))
+        {
+            publisher = "Uploaded via Win32-to-IntuneUI";
+        }
+
+        // Build detection rules - prefer MSI product code if available
+        object[] detectionRules;
+        if (!string.IsNullOrEmpty(metadata.MsiProductCode))
+        {
+            // MSI product code detection - most reliable for MSI packages
+            detectionRules = new object[]
+            {
+                new
+                {
+                    odatatype = "#microsoft.graph.win32LobAppProductCodeRule",
+                    ruleType = "detection",
+                    productCode = metadata.MsiProductCode,
+                    productVersionOperator = "notConfigured",
+                    productVersion = (string?)null
+                }
+            };
         }
         else
         {
-            // For EXE files, use common silent install switches
-            installCommand = $"\"{fileName}\" /S";
-            uninstallCommand = $"\"{fileName}\" /uninstall /S";
+            // File-based detection - check for app in Program Files
+            // Note: This is a placeholder - users should configure proper detection rules in Intune
+            detectionRules = new object[]
+            {
+                new
+                {
+                    odatatype = "#microsoft.graph.win32LobAppFileSystemRule",
+                    ruleType = "detection",
+                    path = $"%ProgramFiles%\\{Path.GetFileNameWithoutExtension(displayName)}",
+                    fileOrFolderName = Path.GetFileNameWithoutExtension(displayName) + ".exe",
+                    check32BitOn64System = false,
+                    operationType = "exists"
+                }
+            };
         }
 
         var app = new
@@ -332,7 +380,7 @@ public class IntuneGraphService
             odatatype = "#microsoft.graph.win32LobApp",
             displayName,
             description = string.IsNullOrEmpty(description) ? displayName : description,
-            publisher = "Uploaded via Win32-to-IntuneUI",
+            publisher,
             fileName,
             setupFilePath = fileName,
             installCommandLine = installCommand,
@@ -344,21 +392,7 @@ public class IntuneGraphService
             },
             applicableArchitectures = "x64,x86",
             minimumSupportedWindowsRelease = "1607",
-            rules = new object[]
-            {
-                // File detection rule - check if the installer file exists in Program Files
-                new
-                {
-                    odatatype = "#microsoft.graph.win32LobAppFileSystemRule",
-                    ruleType = "detection",
-                    path = extension == ".msi"
-                        ? "%ProgramFiles%"
-                        : $"%ProgramFiles%\\{Path.GetFileNameWithoutExtension(fileName)}",
-                    fileOrFolderName = extension == ".msi" ? displayName : fileName,
-                    check32BitOn64System = false,
-                    operationType = "exists"
-                }
-            },
+            rules = detectionRules,
             returnCodes = new object[]
             {
                 new { returnCode = 0, type = "success" },
