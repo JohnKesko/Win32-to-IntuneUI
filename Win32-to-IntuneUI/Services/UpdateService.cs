@@ -72,9 +72,10 @@ public class UpdateService
         if (!UpdateConfig.HasValidToken)
         {
             // Debug: Show what the token looks like (safely)
-            var tokenPreview = UpdateConfig.GitHubToken.Length > 10
-                ? $"{UpdateConfig.GitHubToken[..4]}...{UpdateConfig.GitHubToken[^4..]}"
-                : "(short)";
+            var token = UpdateConfig.GitHubToken;
+            var tokenPreview = token.Length > 10
+                ? $"{token[..4]}...{token[^4..]} (len={token.Length})"
+                : $"(short, len={token.Length})";
             onStatusChanged?.Invoke($"Invalid token: {tokenPreview}");
             return false;
         }

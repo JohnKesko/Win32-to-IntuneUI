@@ -14,7 +14,7 @@ public static class UpdateConfig
     /// GitHub Personal Access Token for private repo access.
     /// This placeholder is replaced during CI/CD build.
     /// </summary>
-    public const string GitHubToken = "__UPDATE_PAT_PLACEHOLDER__";
+    public static readonly string GitHubToken = "__UPDATE_PAT_PLACEHOLDER__";
 
     /// <summary>
     /// Check if a valid token is configured (not the placeholder)
