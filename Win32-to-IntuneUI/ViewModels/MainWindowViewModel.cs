@@ -202,7 +202,33 @@ public partial class MainWindowViewModel : ViewModelBase
 
         UpdateCheckSuccess = isSuccess;
         UpdateCheckFailed = !isSuccess;
-        UpdateStatus = isSuccess ? "Up to date" : "Check failed";
+
+        // Parse the latest version from the result and compare with current
+        if (isSuccess)
+        {
+            var versionMatch = System.Text.RegularExpressions.Regex.Match(result, @"Latest:\s*v?([\d.]+)");
+            if (versionMatch.Success)
+            {
+                var latestVersionStr = versionMatch.Groups[1].Value;
+                var currentVersionStr = AppVersion.TrimStart('v');
+
+                if (System.Version.TryParse(latestVersionStr, out var latestVersion) &&
+                    System.Version.TryParse(currentVersionStr, out var currentVersion))
+                {
+                    if (latestVersion > currentVersion)
+                    {
+                        IsUpdateAvailable = true;
+                        UpdateStatus = $"v{latestVersionStr} available";
+                        return;
+                    }
+                }
+            }
+            UpdateStatus = "Up to date";
+        }
+        else
+        {
+            UpdateStatus = "Check failed";
+        }
     }
 
     /// <summary>
