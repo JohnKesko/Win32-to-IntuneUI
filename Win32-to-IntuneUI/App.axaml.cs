@@ -36,7 +36,7 @@ public partial class App : Application
                 DataContext = viewModel,
             };
 
-            // Initialize and check for updates after the window is shown
+            // Check for updates at startup
             _updateService.Initialize();
             desktop.MainWindow.Opened += async (_, _) => await CheckForUpdatesAsync(viewModel);
         }
