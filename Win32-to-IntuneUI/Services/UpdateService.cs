@@ -53,8 +53,16 @@ public class UpdateService
     /// <returns>True if an update was downloaded and is ready to apply</returns>
     public async Task<bool> CheckAndDownloadAsync(Action<string>? onStatusChanged = null)
     {
-        if (_updateManager == null || !_updateManager.IsInstalled)
+        if (_updateManager == null)
         {
+            onStatusChanged?.Invoke("Update manager not initialized");
+            return false;
+        }
+        
+        if (!_updateManager.IsInstalled)
+        {
+            // Not installed via Velopack - running in dev mode or extracted from ZIP
+            onStatusChanged?.Invoke("Dev mode - updates disabled");
             return false;
         }
 
@@ -65,6 +73,7 @@ public class UpdateService
             var updateInfo = await _updateManager.CheckForUpdatesAsync();
             if (updateInfo == null)
             {
+                onStatusChanged?.Invoke("Up to date");
                 return false;
             }
 
@@ -79,6 +88,7 @@ public class UpdateService
         }
         catch (Exception ex)
         {
+            onStatusChanged?.Invoke($"Update check failed: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"Update check failed: {ex.Message}");
             return false;
         }
