@@ -101,11 +101,34 @@
                                 FontSize="11"
                                 Padding="8,3"/>
                     </StackPanel>
-                    <TextBlock Text="{Binding UpdateStatus}" 
-                               FontSize="11" 
-                               Foreground="#7F8C8D"
-                               HorizontalAlignment="Right"
-                               IsVisible="{Binding !IsUpdateAvailable}"/>
+                    <StackPanel Orientation="Horizontal" 
+                                Spacing="5"
+                                IsVisible="{Binding !IsUpdateAvailable}"
+                                HorizontalAlignment="Right">
+                        <TextBlock Text="{Binding UpdateStatus}" 
+                                   FontSize="11" 
+                                   Foreground="#7F8C8D"
+                                   VerticalAlignment="Center"/>
+                        <Button Content="ℹ"
+                                Command="{Binding ShowUpdateErrorCommand}"
+                                IsVisible="{Binding HasUpdateError}"
+                                FontSize="10"
+                                Padding="4,1"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="#3498DB"
+                                Cursor="Hand"
+                                ToolTip.Tip="Click for error details"/>
+                        <Button Content="🔧"
+                                Command="{Binding TestUpdateConnectionCommand}"
+                                FontSize="10"
+                                Padding="4,1"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="#95A5A6"
+                                Cursor="Hand"
+                                ToolTip.Tip="Test update connection"/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>

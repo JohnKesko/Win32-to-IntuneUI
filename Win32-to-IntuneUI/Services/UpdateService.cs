@@ -38,8 +38,9 @@ public class UpdateService
     {
         try
         {
-            var token = UpdateConfig.HasValidToken ? UpdateConfig.GitHubToken : null;
-            var source = new GithubSource(UpdateConfig.GitHubRepoUrl, token, false);
+            var token = UpdateConfig.GitHubToken;
+            var hasValidToken = !string.IsNullOrEmpty(token) && token != "__UPDATE_PAT_PLACEHOLDER__";
+            var source = new GithubSource(UpdateConfig.GitHubRepoUrl, hasValidToken ? token : null, false);
             _updateManager = new UpdateManager(source);
         }
         catch (Exception ex)
@@ -49,11 +50,54 @@ public class UpdateService
     }
 
     /// <summary>
+    /// Test the GitHub API connection (works in dev mode too).
+    /// Returns the latest release version or error message.
+    /// </summary>
+    public async Task<string> TestConnectionAsync()
+    {
+        var token = UpdateConfig.GitHubToken;
+        var hasValidToken = !string.IsNullOrEmpty(token) && token != "__UPDATE_PAT_PLACEHOLDER__";
+        
+        if (!hasValidToken)
+        {
+            return $"No valid token. Current value starts with: {token[..Math.Min(10, token.Length)]}...";
+        }
+
+        try
+        {
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.Add("User-Agent", "Win32-to-IntuneUI");
+            http.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+            http.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
+            
+            var response = await http.GetAsync($"{UpdateConfig.GitHubRepoUrl}/releases/latest");
+            var content = await response.Content.ReadAsStringAsync();
+            
+            if (response.IsSuccessStatusCode)
+            {
+                // Parse version from response
+                var tagMatch = System.Text.RegularExpressions.Regex.Match(content, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
+                var version = tagMatch.Success ? tagMatch.Groups[1].Value : "unknown";
+                return $"Success! Latest: {version}";
+            }
+            else
+            {
+                return $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}\n\nResponse:\n{content[..Math.Min(500, content.Length)]}";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Check for updates and download if available.
     /// </summary>
     /// <param name="onStatusChanged">Callback for status updates</param>
+    /// <param name="onError">Callback for full error details</param>
     /// <returns>True if an update was downloaded and is ready to apply</returns>
-    public async Task<bool> CheckAndDownloadAsync(Action<string>? onStatusChanged = null)
+    public async Task<bool> CheckAndDownloadAsync(Action<string>? onStatusChanged = null, Action<string>? onError = null)
     {
         if (_updateManager == null)
         {
@@ -71,7 +115,7 @@ public class UpdateService
         // Check if token is configured for private repo
         var token = UpdateConfig.GitHubToken;
         var hasValidToken = !string.IsNullOrEmpty(token) && token != "__UPDATE_PAT_PLACEHOLDER__";
-        
+
         if (!hasValidToken)
         {
             var tokenPreview = token.Length > 10
@@ -122,6 +166,7 @@ public class UpdateService
         {
             var shortMessage = ex.Message.Length > 50 ? ex.Message[..50] + "..." : ex.Message;
             onStatusChanged?.Invoke($"Update failed: {shortMessage}");
+            onError?.Invoke($"Update Error:\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
             System.Diagnostics.Debug.WriteLine($"Update check failed: {ex.Message}");
             return false;
         }

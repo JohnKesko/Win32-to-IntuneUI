@@ -45,6 +45,22 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _updateStatus = string.Empty;
 
     /// <summary>
+    /// Full update error details (for showing in dialog)
+    /// </summary>
+    [ObservableProperty]
+    private string _updateErrorDetails = string.Empty;
+
+    partial void OnUpdateErrorDetailsChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasUpdateError));
+    }
+
+    /// <summary>
+    /// Whether there's an error to show
+    /// </summary>
+    public bool HasUpdateError => !string.IsNullOrEmpty(UpdateErrorDetails);
+
+    /// <summary>
     /// Whether an update is available and ready to install
     /// </summary>
     [ObservableProperty]
@@ -105,6 +121,63 @@ public partial class MainWindowViewModel : ViewModelBase
     private void ApplyUpdate()
     {
         UpdateService?.ApplyUpdateAndRestart();
+    }
+
+    /// <summary>
+    /// Show full update error details in a message box
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowUpdateError()
+    {
+        if (MainWindow == null || string.IsNullOrEmpty(UpdateErrorDetails)) return;
+        
+        var box = new Avalonia.Controls.Window
+        {
+            Title = "Update Error Details",
+            Width = 500,
+            Height = 300,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Avalonia.Controls.TextBox
+            {
+                Text = UpdateErrorDetails,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(10)
+            }
+        };
+        await box.ShowDialog(MainWindow);
+    }
+
+    /// <summary>
+    /// Test the update connection (works in dev mode for debugging)
+    /// </summary>
+    [RelayCommand]
+    private async Task TestUpdateConnection()
+    {
+        if (MainWindow == null || UpdateService == null) return;
+        
+        UpdateStatus = "Testing connection...";
+        var result = await UpdateService.TestConnectionAsync();
+        
+        var box = new Avalonia.Controls.Window
+        {
+            Title = "Update Connection Test",
+            Width = 600,
+            Height = 400,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Avalonia.Controls.TextBox
+            {
+                Text = result,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(10)
+            }
+        };
+        await box.ShowDialog(MainWindow);
+        
+        UpdateStatus = result.StartsWith("Success") ? result : "Connection test failed";
     }
 
     /// <summary>
