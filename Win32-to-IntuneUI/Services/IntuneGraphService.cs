@@ -126,7 +126,7 @@ public class IntuneGraphService
 
                 if (appsResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    return (false, 
+                    return (false,
                         "Unauthorized - Invalid credentials.\n\n" +
                         $"Error: {errorDetail}\n\n" +
                         "Please verify:\n" +

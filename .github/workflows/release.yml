@@ -46,12 +46,20 @@ jobs:
         
       - name: Inject update token
         shell: pwsh
+        env:
+          UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
           $file = "Win32-to-IntuneUI/UpdateConfig.cs"
           $content = Get-Content $file -Raw
-          $content = $content -replace '__UPDATE_PAT_PLACEHOLDER__', '${{ secrets.UPDATE_PAT }}'
-          Set-Content $file $content
-          Write-Host "Token injected into UpdateConfig.cs"
+          $token = $env:UPDATE_TOKEN
+          if ([string]::IsNullOrEmpty($token)) {
+            Write-Host "WARNING: UPDATE_PAT secret is not set!"
+          } else {
+            Write-Host "Token found, injecting into UpdateConfig.cs"
+            $content = $content -replace '__UPDATE_PAT_PLACEHOLDER__', $token
+            Set-Content $file $content
+            Write-Host "Token injected successfully"
+          }
         
       - name: Publish Windows x64
         run: |
@@ -107,9 +115,16 @@ jobs:
         run: dotnet restore ${{ env.PROJECT_PATH }}
         
       - name: Inject update token
+        env:
+          UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
-          sed -i '' 's/__UPDATE_PAT_PLACEHOLDER__/${{ secrets.UPDATE_PAT }}/g' Win32-to-IntuneUI/UpdateConfig.cs
-          echo "Token injected into UpdateConfig.cs"
+          if [ -z "$UPDATE_TOKEN" ]; then
+            echo "WARNING: UPDATE_PAT secret is not set!"
+          else
+            echo "Token found, injecting into UpdateConfig.cs"
+            sed -i '' "s/__UPDATE_PAT_PLACEHOLDER__/$UPDATE_TOKEN/g" Win32-to-IntuneUI/UpdateConfig.cs
+            echo "Token injected successfully"
+          fi
         
       - name: Publish macOS ARM64
         run: |
@@ -168,9 +183,16 @@ jobs:
         run: dotnet restore ${{ env.PROJECT_PATH }}
         
       - name: Inject update token
+        env:
+          UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
-          sed -i 's/__UPDATE_PAT_PLACEHOLDER__/${{ secrets.UPDATE_PAT }}/g' Win32-to-IntuneUI/UpdateConfig.cs
-          echo "Token injected into UpdateConfig.cs"
+          if [ -z "$UPDATE_TOKEN" ]; then
+            echo "WARNING: UPDATE_PAT secret is not set!"
+          else
+            echo "Token found, injecting into UpdateConfig.cs"
+            sed -i "s/__UPDATE_PAT_PLACEHOLDER__/$UPDATE_TOKEN/g" Win32-to-IntuneUI/UpdateConfig.cs
+            echo "Token injected successfully"
+          fi
         
       - name: Publish Linux x64
         run: |

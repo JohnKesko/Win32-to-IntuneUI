@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
@@ -13,6 +14,7 @@ public class UpdateService
 {
     private UpdateManager? _updateManager;
     private UpdateInfo? _pendingUpdate;
+    private const int TimeoutSeconds = 15;
 
     /// <summary>
     /// Whether the app is running as an installed Velopack application
@@ -58,7 +60,7 @@ public class UpdateService
             onStatusChanged?.Invoke("Update manager not initialized");
             return false;
         }
-        
+
         if (!_updateManager.IsInstalled)
         {
             // Not installed via Velopack - running in dev mode or extracted from ZIP
@@ -66,11 +68,30 @@ public class UpdateService
             return false;
         }
 
+        // Check if token is configured for private repo
+        if (!UpdateConfig.HasValidToken)
+        {
+            onStatusChanged?.Invoke("No update token configured");
+            return false;
+        }
+
         try
         {
             onStatusChanged?.Invoke("Checking for updates...");
 
-            var updateInfo = await _updateManager.CheckForUpdatesAsync();
+            // Add timeout to prevent hanging
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));
+            
+            var checkTask = _updateManager.CheckForUpdatesAsync();
+            var completedTask = await Task.WhenAny(checkTask, Task.Delay(TimeSpan.FromSeconds(TimeoutSeconds), cts.Token));
+            
+            if (completedTask != checkTask)
+            {
+                onStatusChanged?.Invoke("Update check timed out");
+                return false;
+            }
+
+            var updateInfo = await checkTask;
             if (updateInfo == null)
             {
                 onStatusChanged?.Invoke("Up to date");
@@ -86,9 +107,15 @@ public class UpdateService
 
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            onStatusChanged?.Invoke("Update check timed out");
+            return false;
+        }
         catch (Exception ex)
         {
-            onStatusChanged?.Invoke($"Update check failed: {ex.Message}");
+            var shortMessage = ex.Message.Length > 50 ? ex.Message[..50] + "..." : ex.Message;
+            onStatusChanged?.Invoke($"Update failed: {shortMessage}");
             System.Diagnostics.Debug.WriteLine($"Update check failed: {ex.Message}");
             return false;
         }
