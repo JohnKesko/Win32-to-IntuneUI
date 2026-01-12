@@ -12,5 +12,13 @@
     <Application.Styles>
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+        
+        <!-- Custom text selection color -->
+        <Style Selector="TextBox">
+            <Setter Property="SelectionBrush" Value="#CCCCCC"/>
+        </Style>
+        <Style Selector="TextPresenter">
+            <Setter Property="SelectionBrush" Value="#CCCCCC"/>
+        </Style>
     </Application.Styles>
 </Application>

@@ -314,18 +314,19 @@ public class IntuneGraphService
             },
             applicableArchitectures = "x64,x86",
             minimumSupportedWindowsRelease = "1607",
-            detectionRules = new object[]
+            rules = new object[]
             {
                 // File detection rule - check if the installer file exists in Program Files
                 new
                 {
-                    odatatype = "#microsoft.graph.win32LobAppFileSystemDetectionRule",
+                    odatatype = "#microsoft.graph.win32LobAppFileSystemRule",
+                    ruleType = "detection",
                     path = extension == ".msi"
                         ? "%ProgramFiles%"
                         : $"%ProgramFiles%\\{Path.GetFileNameWithoutExtension(fileName)}",
                     fileOrFolderName = extension == ".msi" ? displayName : fileName,
                     check32BitOn64System = false,
-                    detectionType = "exists"
+                    operationType = "exists"
                 }
             },
             returnCodes = new object[]
