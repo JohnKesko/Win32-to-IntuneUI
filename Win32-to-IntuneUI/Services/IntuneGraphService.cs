@@ -153,7 +153,7 @@ public class IntuneGraphService
                 {
                     return (false,
                         $"✓ Connected to: {orgName}\n\n" +
-                        "Error: Missing required permission!\n\n" +
+                        "Error: Missing required permission.\n\n" +
                         $"Error: {errorDetail}\n\n" +
                         "The app needs 'DeviceManagementApps.ReadWrite.All' (Application permission).\n\n" +
                         "To fix:\n" +
