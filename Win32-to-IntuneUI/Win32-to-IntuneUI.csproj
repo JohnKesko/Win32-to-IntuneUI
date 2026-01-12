@@ -4,6 +4,18 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+        <!-- Version - single source of truth -->
+        <Version>1.0.0</Version>
+        <AssemblyVersion>$(Version)</AssemblyVersion>
+        <FileVersion>$(Version)</FileVersion>
+        <InformationalVersion>$(Version)</InformationalVersion>
+
+        <!-- App metadata -->
+        <Product>Win32 to Intune Package Creator</Product>
+        <Company>Open Source</Company>
+        <Copyright>Copyright © 2026</Copyright>
+        <Description>Create .intunewin packages for Microsoft Intune deployment</Description>
     </PropertyGroup>
 
     <!-- Windows-specific settings -->
@@ -52,5 +64,6 @@
         <PackageReference Include="Azure.Identity" Version="1.17.1" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
         <PackageReference Include="Microsoft.Graph" Version="5.100.0" />
+        <PackageReference Include="Velopack" Version="0.0.1251" />
     </ItemGroup>
 </Project>
