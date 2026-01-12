@@ -130,7 +130,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task ShowUpdateError()
     {
         if (MainWindow == null || string.IsNullOrEmpty(UpdateErrorDetails)) return;
-        
+
         var box = new Avalonia.Controls.Window
         {
             Title = "Update Error Details",
@@ -156,10 +156,10 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task TestUpdateConnection()
     {
         if (MainWindow == null || UpdateService == null) return;
-        
+
         UpdateStatus = "Testing connection...";
         var result = await UpdateService.TestConnectionAsync();
-        
+
         var box = new Avalonia.Controls.Window
         {
             Title = "Update Connection Test",
@@ -176,7 +176,7 @@ public partial class MainWindowViewModel : ViewModelBase
             }
         };
         await box.ShowDialog(MainWindow);
-        
+
         UpdateStatus = result.StartsWith("Success") ? result : "Connection test failed";
     }
 

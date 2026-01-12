@@ -47,7 +47,7 @@ public partial class App : Application
     private async Task CheckForUpdatesAsync(MainWindowViewModel viewModel)
     {
         viewModel.UpdateErrorDetails = string.Empty;
-        
+
         var hasUpdate = await _updateService.CheckAndDownloadAsync(
             status => viewModel.UpdateStatus = status,
             error => viewModel.UpdateErrorDetails = error

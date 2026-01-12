@@ -57,7 +57,7 @@ public class UpdateService
     {
         var token = UpdateConfig.GitHubToken;
         var hasValidToken = !string.IsNullOrEmpty(token) && token != "__UPDATE_PAT_PLACEHOLDER__";
-        
+
         if (!hasValidToken)
         {
             return $"No valid token. Current value starts with: {token[..Math.Min(10, token.Length)]}...";
@@ -69,20 +69,34 @@ public class UpdateService
             http.DefaultRequestHeaders.Add("User-Agent", "Win32-to-IntuneUI");
             http.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
             http.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
-            
-            var response = await http.GetAsync($"{UpdateConfig.GitHubRepoUrl}/releases/latest");
+
+            // Use correct GitHub API URL (api.github.com/repos/owner/repo)
+            const string apiUrl = "https://api.github.com/repos/JohnKesko/Win32-to-IntuneUI/releases/latest";
+            var response = await http.GetAsync(apiUrl);
             var content = await response.Content.ReadAsStringAsync();
-            
+
             if (response.IsSuccessStatusCode)
             {
-                // Parse version from response
+                // Parse version and assets from response
                 var tagMatch = System.Text.RegularExpressions.Regex.Match(content, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
                 var version = tagMatch.Success ? tagMatch.Groups[1].Value : "unknown";
-                return $"Success! Latest: {version}";
+                
+                // Count and list assets
+                var assetMatches = System.Text.RegularExpressions.Regex.Matches(content, "\"name\"\\s*:\\s*\"([^\"]+)\"");
+                var assets = new System.Collections.Generic.List<string>();
+                foreach (System.Text.RegularExpressions.Match m in assetMatches)
+                {
+                    var name = m.Groups[1].Value;
+                    if (name.Contains(".nupkg") || name.Contains("RELEASES") || name.Contains("Setup") || name.Contains(".zip") || name.Contains(".tar"))
+                        assets.Add(name);
+                }
+                
+                var assetList = assets.Count > 0 ? string.Join("\n", assets) : "(no release assets found)";
+                return $"✓ Latest: {version}\n\nAssets:\n{assetList}";
             }
             else
             {
-                return $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}\n\nResponse:\n{content[..Math.Min(500, content.Length)]}";
+                return $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}\n\nURL: {apiUrl}\n\nResponse:\n{content[..Math.Min(500, content.Length)]}";
             }
         }
         catch (Exception ex)
