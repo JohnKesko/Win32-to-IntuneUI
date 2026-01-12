@@ -1,0 +1,212 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+    inputs:
+      version:
+        description: 'Version to release (without v prefix)'
+        required: true
+        default: '1.0.0'
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  PROJECT_PATH: 'Win32-to-IntuneUI/Win32-to-IntuneUI.csproj'
+  APP_NAME: 'Win32-to-IntuneUI'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+          
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Publish Windows x64
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} `
+            -c Release `
+            -r win-x64 `
+            -o publish/win-x64 `
+            -p:Version=${{ steps.version.outputs.VERSION }} `
+            --self-contained true
+            
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+        
+      - name: Create Velopack release
+        run: |
+          vpk pack `
+            --packId ${{ env.APP_NAME }} `
+            --packVersion ${{ steps.version.outputs.VERSION }} `
+            --packDir publish/win-x64 `
+            --mainExe ${{ env.APP_NAME }}.exe `
+            --outputDir releases
+            
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: releases/*
+          
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+          
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Publish macOS ARM64
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            -c Release \
+            -r osx-arm64 \
+            -o publish/osx-arm64 \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            --self-contained true
+            
+      - name: Publish macOS x64
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            -c Release \
+            -r osx-x64 \
+            -o publish/osx-x64 \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            --self-contained true
+            
+      - name: Create macOS archives
+        run: |
+          mkdir -p releases
+          cd publish/osx-arm64 && zip -r ../../releases/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-osx-arm64.zip . && cd ../..
+          cd publish/osx-x64 && zip -r ../../releases/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-osx-x64.zip . && cd ../..
+          
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: releases/*
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+          
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Publish Linux x64
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} \
+            -c Release \
+            -r linux-x64 \
+            -o publish/linux-x64 \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            --self-contained true
+            
+      - name: Create Linux archive
+        run: |
+          mkdir -p releases
+          cd publish/linux-x64 && tar -czvf ../../releases/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz . && cd ../..
+          
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: releases/*
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: releases
+          merge-multiple: true
+          
+      - name: List release files
+        run: ls -la releases/
+        
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.version.outputs.VERSION) || github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: releases/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
