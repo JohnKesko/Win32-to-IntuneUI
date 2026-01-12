@@ -1,6 +1,9 @@
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Win32_to_IntuneUI.Views;
@@ -57,49 +60,52 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Upload a single package that was just created
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanUploadSinglePackage))]
-    private async Task UploadSinglePackage()
-    {
-        var packagePath = SinglePackage.GetLastCreatedPackagePath();
-        if (packagePath == null)
-        {
-            SinglePackage.AppendLog("ERROR: No .intunewin package found. Please create a package first.");
-            return;
-        }
-
-        var displayName = Path.GetFileNameWithoutExtension(SinglePackage.SetupFile);
-        IntuneUpload.PopulateFromSinglePackage(packagePath, displayName);
-
-        var dialog = new IntuneUploadDialog
-        {
-            DataContext = IntuneUpload
-        };
-
-        if (MainWindow != null)
-        {
-            await dialog.ShowDialog(MainWindow);
-        }
-    }
-
-    private bool CanUploadSinglePackage()
-    {
-        return SinglePackage.GetLastCreatedPackagePath() != null && !SinglePackage.IsProcessing;
-    }
-
-    /// <summary>
-    /// Show upload dialog for batch-processed packages
+    /// Upload packages to Intune - uses recently created package(s) or allows browsing for .intunewin files.
+    /// This is the unified upload method used by both Single Package and Batch Processing tabs.
+    /// Credentials are shared across all uploads via the IntuneUpload ViewModel.
     /// </summary>
     [RelayCommand]
-    private async Task ShowIntuneUploadDialog()
+    private async Task UploadToIntune()
     {
-        IntuneUpload.PopulateFromBatchResults(BatchProcessing.BatchCandidates);
+        if (MainWindow == null) return;
 
-        if (IntuneUpload.UploadCandidates.Count == 0)
+        // First, check for recently created package from Single Package tab
+        var singlePackagePath = SinglePackage.GetLastCreatedPackagePath();
+        
+        // Then check for batch results
+        var hasBatchResults = BatchProcessing.BatchCandidates.Any(c => 
+            !string.IsNullOrEmpty(c.OutputFilePath) && File.Exists(c.OutputFilePath!));
+
+        if (singlePackagePath != null)
         {
-            BatchProcessing.AppendLog("No packages available to upload");
-            return;
+            // Pre-populate with the single package
+            IntuneUpload.PopulateFromSinglePackage(singlePackagePath, 
+                Path.GetFileNameWithoutExtension(singlePackagePath));
+            SinglePackage.AppendLog($"Ready to upload: {Path.GetFileName(singlePackagePath)}");
+        }
+        else if (hasBatchResults)
+        {
+            // Pre-populate with batch results
+            IntuneUpload.PopulateFromBatchResults(BatchProcessing.BatchCandidates);
+            BatchProcessing.AppendLog($"{IntuneUpload.UploadCandidates.Count} package(s) ready for upload");
+        }
+        else
+        {
+            // No recent packages - let user browse for .intunewin files
+            var files = await MainWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Select .intunewin Package(s)",
+                AllowMultiple = true,
+                FileTypeFilter = new List<FilePickerFileType>
+                {
+                    new("Intune Win32 Package") { Patterns = new[] { "*.intunewin" } },
+                    FilePickerFileTypes.All
+                }
+            });
+
+            if (files.Count == 0) return;
+
+            IntuneUpload.PopulateFromFiles(files.Select(f => f.Path.LocalPath).ToList());
         }
 
         var dialog = new IntuneUploadDialog
@@ -107,9 +113,6 @@ public partial class MainWindowViewModel : ViewModelBase
             DataContext = IntuneUpload
         };
 
-        if (MainWindow != null)
-        {
-            await dialog.ShowDialog(MainWindow);
-        }
+        await dialog.ShowDialog(MainWindow);
     }
 }

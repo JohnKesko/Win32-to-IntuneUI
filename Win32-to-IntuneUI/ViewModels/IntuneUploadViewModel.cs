@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -93,6 +94,34 @@ public partial class IntuneUploadViewModel : ViewModelBase
         {
             UploadStatusText = "Package not found";
         }
+
+        OnPropertyChanged(nameof(UploadSelectionCount));
+    }
+
+    /// <summary>
+    /// Populate upload candidates from a list of file paths
+    /// </summary>
+    public void PopulateFromFiles(List<string> filePaths)
+    {
+        UploadCandidates.Clear();
+
+        foreach (var filePath in filePaths.Where(File.Exists))
+        {
+            var uploadCandidate = new IntuneUploadCandidate
+            {
+                DisplayName = Path.GetFileNameWithoutExtension(filePath),
+                FolderName = Path.GetDirectoryName(filePath) ?? "",
+                PackageFilePath = filePath,
+                UploadStatus = "Ready",
+                IsSelected = true
+            };
+
+            UploadCandidates.Add(uploadCandidate);
+        }
+
+        UploadStatusText = UploadCandidates.Count > 0
+            ? $"{UploadCandidates.Count} package(s) ready"
+            : "No valid packages found";
 
         OnPropertyChanged(nameof(UploadSelectionCount));
     }
