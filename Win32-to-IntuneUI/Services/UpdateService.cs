@@ -80,7 +80,7 @@ public class UpdateService
                 // Parse version and assets from response
                 var tagMatch = System.Text.RegularExpressions.Regex.Match(content, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
                 var version = tagMatch.Success ? tagMatch.Groups[1].Value : "unknown";
-                
+
                 // Count and list assets
                 var assetMatches = System.Text.RegularExpressions.Regex.Matches(content, "\"name\"\\s*:\\s*\"([^\"]+)\"");
                 var assets = new System.Collections.Generic.List<string>();
@@ -90,7 +90,7 @@ public class UpdateService
                     if (name.Contains(".nupkg") || name.Contains("RELEASES") || name.Contains("Setup") || name.Contains(".zip") || name.Contains(".tar"))
                         assets.Add(name);
                 }
-                
+
                 var assetList = assets.Count > 0 ? string.Join("\n", assets) : "(no release assets found)";
                 return $"✓ Latest: {version}\n\nAssets:\n{assetList}";
             }
