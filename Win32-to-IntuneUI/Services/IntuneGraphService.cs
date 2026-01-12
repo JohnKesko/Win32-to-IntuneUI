@@ -1,29 +1,35 @@
-using Azure.Identity;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
-using System.Security.Cryptography;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace Win32_to_IntuneUI.Services;
 
 public class IntuneGraphService
 {
-    private GraphServiceClient? _graphClient;
     private string? _accessToken;
+    private static readonly HttpClient _httpClient;
+    private const string GraphBaseUrl = "https://graph.microsoft.com/beta";
 
-    /// <summary>
-    /// Initialize the service with a Client ID, Tenant ID, and Client Secret for app-only authentication
-    /// </summary>
-    public void InitializeWithClientCredentials(string clientId, string tenantId, string clientSecret)
+    static IntuneGraphService()
     {
-        var clientSecretCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-        _graphClient = new GraphServiceClient(clientSecretCredential);
+        // Use a shared static HttpClient to prevent port exhaustion
+        // HttpClient is designed to be reused and is thread-safe
+        _httpClient = new HttpClient();
+        _httpClient.Timeout = TimeSpan.FromMinutes(30); // Long timeout for large file uploads
+    }
+
+    public IntuneGraphService()
+    {
+        // Instance constructor - nothing to initialize since HttpClient is static
     }
 
     /// <summary>
@@ -32,9 +38,71 @@ public class IntuneGraphService
     public void InitializeWithAccessToken(string accessToken)
     {
         _accessToken = accessToken;
-        
-        // We'll use the access token directly in HTTP requests
-        // The GraphServiceClient will be used for supported operations only
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _accessToken);
+    }
+
+    /// <summary>
+    /// Exchange client credentials for an access token using OAuth 2.0 Client Credentials flow
+    /// </summary>
+    /// <param name="tenantId">Azure AD Tenant ID</param>
+    /// <param name="clientId">Application (Client) ID</param>
+    /// <param name="clientSecret">Client Secret</param>
+    /// <returns>Tuple with success status and message (or token on success)</returns>
+    public async Task<(bool Success, string Message, string? Token, DateTime? ExpiresAt)> AcquireTokenAsync(
+        string tenantId,
+        string clientId,
+        string clientSecret)
+    {
+        try
+        {
+            var tokenEndpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token";
+
+            var requestBody = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = clientId,
+                ["client_secret"] = clientSecret,
+                ["scope"] = "https://graph.microsoft.com/.default"
+            });
+
+            // Reuse the shared HttpClient for token acquisition
+            var response = await _httpClient.PostAsync(tokenEndpoint, requestBody);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+
+                if (tokenResponse?.AccessToken != null)
+                {
+                    var expiresAt = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn);
+
+                    // Initialize the service with the new token
+                    InitializeWithAccessToken(tokenResponse.AccessToken);
+
+                    return (true, "Token acquired successfully", tokenResponse.AccessToken, expiresAt);
+                }
+
+                return (false, "No access token in response", null, null);
+            }
+
+            // Parse error response
+            try
+            {
+                var errorResponse = JsonSerializer.Deserialize<TokenErrorResponse>(responseContent);
+                var errorMessage = errorResponse?.ErrorDescription ?? errorResponse?.Error ?? "Unknown error";
+                return (false, $"Authentication failed: {errorMessage}", null, null);
+            }
+            catch
+            {
+                return (false, $"Authentication failed: {response.StatusCode}", null, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Token acquisition error: {ex.Message}", null, null);
+        }
     }
 
     /// <summary>
@@ -42,25 +110,39 @@ public class IntuneGraphService
     /// </summary>
     public async Task<(bool Success, string Message)> TestConnectionAsync()
     {
+        if (string.IsNullOrWhiteSpace(_accessToken))
+            return (false, "Access token not configured. Please enter your access token.");
+
         try
         {
-            if (_graphClient == null)
-                return (false, "Graph client not initialized. Please configure authentication.");
+            // Test by getting organization info
+            var response = await _httpClient.GetAsync($"{GraphBaseUrl}/organization");
 
-            // Try to get the organization details as a connection test
-            var organization = await _graphClient.Organization.GetAsync();
-            
-            if (organization?.Value?.Any() == true)
+            if (response.IsSuccessStatusCode)
             {
-                var orgName = organization.Value.First().DisplayName;
-                return (true, $"Successfully connected to {orgName}");
+                var content = await response.Content.ReadAsStringAsync();
+                var orgResponse = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(content);
+
+                if (orgResponse?.Value?.Length > 0)
+                {
+                    var orgName = orgResponse.Value[0].DisplayName ?? "Unknown Organization";
+                    return (true, $"Connected to: {orgName}");
+                }
+
+                return (true, "Connected successfully");
             }
 
-            return (false, "Unable to retrieve organization information");
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return (false, "Unauthorized - token may be expired or invalid");
+            }
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            return (false, $"Connection failed: {response.StatusCode} - {errorContent}");
         }
         catch (Exception ex)
         {
-            return (false, $"Connection failed: {ex.Message}");
+            return (false, $"Connection error: {ex.Message}");
         }
     }
 
@@ -73,77 +155,87 @@ public class IntuneGraphService
         string description = "",
         Action<string>? logCallback = null)
     {
+        if (string.IsNullOrWhiteSpace(_accessToken))
+            return (false, "Access token not configured", null);
+
+        if (!File.Exists(intunewinPath))
+            return (false, $"File not found: {intunewinPath}", null);
+
         try
         {
-            if (_graphClient == null)
-                return (false, "Graph client not initialized", null);
-
-            if (!File.Exists(intunewinPath))
-                return (false, $"File not found: {intunewinPath}", null);
-
             logCallback?.Invoke($"Starting upload for: {displayName}");
 
-            // Step 1: Create the Win32LobApp
-            logCallback?.Invoke("Step 1: Creating app registration in Intune...");
-            var app = await CreateWin32LobAppAsync(displayName, description);
-            
-            if (app?.Id == null)
+            // Step 1: Extract metadata from .intunewin file
+            logCallback?.Invoke("Step 1: Reading package metadata...");
+            var metadata = ExtractIntuneWinMetadata(intunewinPath);
+
+            if (metadata == null)
+            {
+                return (false, "Failed to extract metadata from .intunewin file", null);
+            }
+
+            logCallback?.Invoke($"  Installer: {metadata.FileName}");
+            logCallback?.Invoke($"  Unencrypted size: {FormatBytes(metadata.UnencryptedContentSize)}");
+
+            // Step 2: Create the Win32LobApp
+            logCallback?.Invoke("Step 2: Creating app registration in Intune...");
+            var appId = await CreateWin32LobAppAsync(displayName, description, metadata);
+
+            if (string.IsNullOrEmpty(appId))
                 return (false, "Failed to create app in Intune", null);
 
-            logCallback?.Invoke($"App created with ID: {app.Id}");
+            logCallback?.Invoke($"  App created with ID: {appId}");
 
-            // Step 2: Create content version
-            logCallback?.Invoke("Step 2: Creating content version...");
-            var contentVersion = await CreateContentVersionAsync(app.Id);
-            
-            if (contentVersion?.Id == null)
-                return (false, "Failed to create content version", app.Id);
+            // Step 3: Create content version
+            logCallback?.Invoke("Step 3: Creating content version...");
+            var contentVersionId = await CreateContentVersionAsync(appId);
 
-            logCallback?.Invoke($"Content version created: {contentVersion.Id}");
+            if (string.IsNullOrEmpty(contentVersionId))
+                return (false, "Failed to create content version", appId);
 
-            // Step 3: Extract and read detection.xml from .intunewin
-            logCallback?.Invoke("Step 3: Reading package metadata...");
-            var detectionInfo = ReadIntuneWinMetadata(intunewinPath);
+            logCallback?.Invoke($"  Content version: {contentVersionId}");
 
-            // Step 4: Create the content version file
-            logCallback?.Invoke("Step 4: Preparing file upload...");
+            // Step 4: Create content file entry
+            logCallback?.Invoke("Step 4: Creating content file entry...");
             var fileInfo = new FileInfo(intunewinPath);
-            var contentFile = await CreateContentVersionFileAsync(
-                app.Id,
-                contentVersion.Id,
-                fileInfo.Name,
-                fileInfo.Length,
-                detectionInfo);
+            var contentFile = await CreateContentFileAsync(appId, contentVersionId, metadata, fileInfo.Length);
 
-            if (contentFile?.AzureStorageUri == null)
-                return (false, "Failed to create content version file", app.Id);
+            if (contentFile == null || string.IsNullOrEmpty(contentFile.Id))
+                return (false, "Failed to create content file entry", appId);
 
-            logCallback?.Invoke($"Upload URL obtained");
+            logCallback?.Invoke($"  File entry created, waiting for Azure upload URL...");
 
-            // Step 5: Upload the file to Azure Storage
+            // Step 5: Wait for Azure Storage URI
+            var uploadInfo = await WaitForAzureStorageUriAsync(appId, contentVersionId, contentFile.Id);
+
+            if (uploadInfo == null || string.IsNullOrEmpty(uploadInfo.AzureStorageUri))
+                return (false, "Failed to get Azure Storage upload URL", appId);
+
             logCallback?.Invoke("Step 5: Uploading file to Azure Storage...");
-            await UploadFileToAzureStorageAsync(intunewinPath, contentFile.AzureStorageUri, logCallback);
-            logCallback?.Invoke("File uploaded successfully");
 
-            // Step 6: Commit the file
+            // Step 6: Upload to Azure Storage using block blobs
+            await UploadFileToAzureStorageAsync(intunewinPath, uploadInfo.AzureStorageUri, logCallback);
+            logCallback?.Invoke("  File uploaded successfully");
+
+            // Step 7: Commit the file
             logCallback?.Invoke("Step 6: Committing file...");
-            await CommitContentVersionFileAsync(app.Id, contentVersion.Id, contentFile.Id!);
-            logCallback?.Invoke("File committed");
+            await CommitFileAsync(appId, contentVersionId, contentFile.Id, metadata);
 
-            // Step 7: Commit the content version
-            logCallback?.Invoke("Step 7: Finalizing content version...");
-            await CommitContentVersionAsync(app.Id, contentVersion.Id);
-            logCallback?.Invoke("Content version finalized");
+            // Step 8: Wait for file processing
+            logCallback?.Invoke("Step 7: Waiting for file processing...");
+            var fileReady = await WaitForFileProcessingAsync(appId, contentVersionId, contentFile.Id, logCallback);
 
-            // Step 8: Wait for processing
-            logCallback?.Invoke("Step 8: Waiting for Intune to process the app...");
-            var committed = await WaitForContentVersionCommitAsync(app.Id, contentVersion.Id, logCallback);
-            
-            if (!committed)
-                return (false, "Content version processing timed out or failed", app.Id);
+            if (!fileReady)
+            {
+                logCallback?.Invoke("  Warning: File processing may not be complete");
+            }
+
+            // Step 9: Commit content version to the app
+            logCallback?.Invoke("Step 8: Finalizing app content...");
+            await CommitContentVersionToAppAsync(appId, contentVersionId);
 
             logCallback?.Invoke($"✓ Successfully uploaded: {displayName}");
-            return (true, $"Successfully uploaded {displayName}", app.Id);
+            return (true, $"Successfully uploaded {displayName}", appId);
         }
         catch (Exception ex)
         {
@@ -152,194 +244,481 @@ public class IntuneGraphService
         }
     }
 
-    private async Task<Win32LobApp?> CreateWin32LobAppAsync(string displayName, string description)
+    private async Task<string?> CreateWin32LobAppAsync(string displayName, string description, IntuneWinMetadata metadata)
     {
-        var app = new Win32LobApp
+        // Determine install command based on file extension
+        var fileName = metadata.FileName ?? "setup.exe";
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        string installCommand;
+        string uninstallCommand;
+
+        if (extension == ".msi")
         {
-            OdataType = "#microsoft.graph.win32LobApp",
-            DisplayName = displayName,
-            Description = description,
-            Publisher = "Uploaded via Win32-to-IntuneUI",
-            InstallExperience = new Win32LobAppInstallExperience
+            installCommand = $"msiexec /i \"{fileName}\" /qn";
+            uninstallCommand = $"msiexec /x \"{metadata.MsiProductCode ?? fileName}\" /qn";
+        }
+        else
+        {
+            // For EXE files, use common silent install switches
+            installCommand = $"\"{fileName}\" /S";
+            uninstallCommand = $"\"{fileName}\" /uninstall /S";
+        }
+
+        var app = new
+        {
+            odatatype = "#microsoft.graph.win32LobApp",
+            displayName,
+            description = string.IsNullOrEmpty(description) ? displayName : description,
+            publisher = "Uploaded via Win32-to-IntuneUI",
+            fileName,
+            installCommandLine = installCommand,
+            uninstallCommandLine = uninstallCommand,
+            installExperience = new
             {
-                RunAsAccount = RunAsAccountType.System
+                runAsAccount = "system",
+                deviceRestartBehavior = "suppress"
             },
-            ApplicableArchitectures = WindowsArchitecture.X64 | WindowsArchitecture.X86
+            applicableArchitectures = "x64,x86",
+            minimumSupportedWindowsRelease = "1607",
+            detectionRules = new object[]
+            {
+                // File detection rule - check if the installer file exists in Program Files
+                new
+                {
+                    odatatype = "#microsoft.graph.win32LobAppFileSystemDetectionRule",
+                    path = extension == ".msi"
+                        ? "%ProgramFiles%"
+                        : $"%ProgramFiles%\\{Path.GetFileNameWithoutExtension(fileName)}",
+                    fileOrFolderName = extension == ".msi" ? displayName : fileName,
+                    check32BitOn64System = false,
+                    detectionType = "exists"
+                }
+            },
+            returnCodes = new object[]
+            {
+                new { returnCode = 0, type = "success" },
+                new { returnCode = 1707, type = "success" },
+                new { returnCode = 3010, type = "softReboot" },
+                new { returnCode = 1641, type = "hardReboot" },
+                new { returnCode = 1618, type = "retry" }
+            }
         };
 
-        return await _graphClient!.DeviceAppManagement.MobileApps.PostAsync(app) as Win32LobApp;
+        var json = JsonSerializer.Serialize(app, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+
+        // Fix the @odata.type property name
+        json = json.Replace("\"odatatype\"", "\"@odata.type\"");
+
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync($"{GraphBaseUrl}/deviceAppManagement/mobileApps", content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to create app: {response.StatusCode} - {error}");
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+
+        return doc.RootElement.TryGetProperty("id", out var idElement)
+            ? idElement.GetString()
+            : null;
     }
 
-    private async Task<MobileAppContent?> CreateContentVersionAsync(string appId)
+    private async Task<string?> CreateContentVersionAsync(string appId)
     {
-        var requestUrl = $"https://graph.microsoft.com/v1.0/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions";
-        var content = new { };
+        var content = new StringContent("{}", Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(
+            $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions",
+            content);
 
-        var response = await SendGraphRequestAsync<MobileAppContent>(requestUrl, HttpMethod.Post, content);
-        return response;
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to create content version: {response.StatusCode} - {error}");
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(responseJson);
+
+        return doc.RootElement.TryGetProperty("id", out var idElement)
+            ? idElement.GetString()
+            : null;
     }
 
-    private async Task<MobileAppContentFile?> CreateContentVersionFileAsync(
+    private async Task<ContentFileInfo?> CreateContentFileAsync(
         string appId,
         string contentVersionId,
-        string fileName,
-        long fileSize,
-        IntuneWinMetadata metadata)
+        IntuneWinMetadata metadata,
+        long encryptedSize)
     {
-        var requestUrl = $"https://graph.microsoft.com/v1.0/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files";
-        
         var fileRequest = new
         {
-            OdataType = "#microsoft.graph.mobileAppContentFile",
-            name = fileName,
-            size = fileSize,
-            sizeEncrypted = fileSize,
-            manifest = metadata.Manifest,
+            odatatype = "#microsoft.graph.mobileAppContentFile",
+            name = Path.GetFileName(metadata.FileName) + ".intunewin",
+            size = metadata.UnencryptedContentSize,
+            sizeEncrypted = encryptedSize,
+            manifest = null as string,
             isDependency = false
         };
 
-        return await SendGraphRequestAsync<MobileAppContentFile>(requestUrl, HttpMethod.Post, fileRequest);
+        var json = JsonSerializer.Serialize(fileRequest, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+        json = json.Replace("\"odatatype\"", "\"@odata.type\"");
+
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(
+            $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files",
+            content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to create content file: {response.StatusCode} - {error}");
+        }
+
+        var responseJson = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<ContentFileInfo>(responseJson, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+    }
+
+    private async Task<ContentFileInfo?> WaitForAzureStorageUriAsync(
+        string appId,
+        string contentVersionId,
+        string fileId,
+        int maxAttempts = 30)
+    {
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            await Task.Delay(2000);
+
+            var response = await _httpClient.GetAsync(
+                $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files/{fileId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseJson = await response.Content.ReadAsStringAsync();
+                var fileInfo = JsonSerializer.Deserialize<ContentFileInfo>(responseJson, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (!string.IsNullOrEmpty(fileInfo?.AzureStorageUri))
+                {
+                    return fileInfo;
+                }
+            }
+        }
+
+        return null;
     }
 
     private async Task UploadFileToAzureStorageAsync(string filePath, string azureStorageUri, Action<string>? logCallback)
     {
-        const int chunkSize = 6 * 1024 * 1024; // 6 MB chunks
+        const int blockSize = 4 * 1024 * 1024; // 4 MB blocks
         var fileInfo = new FileInfo(filePath);
-        var totalChunks = (int)Math.Ceiling((double)fileInfo.Length / chunkSize);
+        var totalBlocks = (int)Math.Ceiling((double)fileInfo.Length / blockSize);
+        var blockIds = new List<string>();
 
-        logCallback?.Invoke($"Uploading in {totalChunks} chunk(s)...");
+        logCallback?.Invoke($"  Uploading in {totalBlocks} block(s)...");
 
         using var fileStream = File.OpenRead(filePath);
-        var buffer = new byte[chunkSize];
-        var chunkNumber = 0;
+        var buffer = new byte[blockSize];
+        var blockNumber = 0;
 
         while (fileStream.Position < fileStream.Length)
         {
-            var bytesRead = await fileStream.ReadAsync(buffer, 0, chunkSize);
-            var actualBuffer = bytesRead < chunkSize ? buffer[..bytesRead] : buffer;
+            var bytesRead = await fileStream.ReadAsync(buffer, 0, blockSize);
+            var actualBuffer = bytesRead < blockSize ? buffer[..bytesRead] : buffer;
 
-            var startByte = fileStream.Position - bytesRead;
-            var endByte = fileStream.Position - 1;
+            // Create block ID (must be base64 encoded, same length)
+            var blockId = Convert.ToBase64String(Encoding.UTF8.GetBytes(blockNumber.ToString("D6")));
+            blockIds.Add(blockId);
 
-            using var httpClient = new HttpClient();
-            using var content = new ByteArrayContent(actualBuffer);
-            
-            content.Headers.ContentLength = bytesRead;
-            content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(startByte, endByte, fileInfo.Length);
+            // Upload block
+            var blockUri = $"{azureStorageUri}&comp=block&blockid={Uri.EscapeDataString(blockId)}";
 
-            var response = await httpClient.PutAsync(azureStorageUri, content);
-            response.EnsureSuccessStatusCode();
+            using var blockContent = new ByteArrayContent(actualBuffer);
+            blockContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
-            chunkNumber++;
-            if (chunkNumber % 5 == 0 || chunkNumber == totalChunks)
+            // Use a request message to set per-request headers without modifying shared HttpClient defaults
+            using var blockRequest = new HttpRequestMessage(HttpMethod.Put, blockUri);
+            blockRequest.Headers.Add("x-ms-blob-type", "BlockBlob");
+            blockRequest.Content = blockContent;
+
+            var blockResponse = await _httpClient.SendAsync(blockRequest);
+            blockResponse.EnsureSuccessStatusCode();
+
+            blockNumber++;
+            if (blockNumber % 10 == 0 || blockNumber == totalBlocks)
             {
-                logCallback?.Invoke($"  Uploaded {chunkNumber}/{totalChunks} chunks ({(int)((double)chunkNumber / totalChunks * 100)}%)");
+                var percentage = (int)((double)blockNumber / totalBlocks * 100);
+                logCallback?.Invoke($"  Progress: {blockNumber}/{totalBlocks} blocks ({percentage}%)");
             }
         }
+
+        // Commit blocks
+        logCallback?.Invoke("  Committing blocks...");
+        var blockListXml = new StringBuilder("<?xml version=\"1.0\" encoding=\"utf-8\"?><BlockList>");
+        foreach (var id in blockIds)
+        {
+            blockListXml.Append($"<Latest>{id}</Latest>");
+        }
+        blockListXml.Append("</BlockList>");
+
+        var commitUri = $"{azureStorageUri}&comp=blocklist";
+        using var commitContent = new StringContent(blockListXml.ToString(), Encoding.UTF8, "application/xml");
+
+        // Reuse shared HttpClient with a request message
+        using var commitRequest = new HttpRequestMessage(HttpMethod.Put, commitUri);
+        commitRequest.Content = commitContent;
+
+        var commitResponse = await _httpClient.SendAsync(commitRequest);
+        commitResponse.EnsureSuccessStatusCode();
     }
 
-    private async Task CommitContentVersionFileAsync(string appId, string contentVersionId, string fileId)
+    private async Task CommitFileAsync(string appId, string contentVersionId, string fileId, IntuneWinMetadata metadata)
     {
-        var requestUrl = $"https://graph.microsoft.com/v1.0/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files/{fileId}/commit";
-        
         var commitRequest = new
         {
             fileEncryptionInfo = new
             {
-                fileEncryptionInfo = new { }
+                encryptionKey = metadata.EncryptionKey,
+                macKey = metadata.MacKey,
+                initializationVector = metadata.InitializationVector,
+                mac = metadata.Mac,
+                profileIdentifier = metadata.ProfileIdentifier,
+                fileDigest = metadata.FileDigest,
+                fileDigestAlgorithm = metadata.FileDigestAlgorithm
             }
         };
 
-        await SendGraphRequestAsync<object>(requestUrl, HttpMethod.Post, commitRequest);
+        var json = JsonSerializer.Serialize(commitRequest, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(
+            $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files/{fileId}/commit",
+            content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to commit file: {response.StatusCode} - {error}");
+        }
     }
 
-    private async Task CommitContentVersionAsync(string appId, string contentVersionId)
+    private async Task<bool> WaitForFileProcessingAsync(
+        string appId,
+        string contentVersionId,
+        string fileId,
+        Action<string>? logCallback,
+        int maxAttempts = 60)
     {
-        var requestUrl = $"https://graph.microsoft.com/v1.0/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/commit";
-        var commitRequest = new { };
-
-        await SendGraphRequestAsync<object>(requestUrl, HttpMethod.Post, commitRequest);
-    }
-
-    private async Task<bool> WaitForContentVersionCommitAsync(string appId, string contentVersionId, Action<string>? logCallback, int maxAttempts = 30)
-    {
-        var requestUrl = $"https://graph.microsoft.com/v1.0/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}";
-
         for (int i = 0; i < maxAttempts; i++)
         {
-            await Task.Delay(2000); // Wait 2 seconds between checks
+            await Task.Delay(2000);
 
-            try
+            var response = await _httpClient.GetAsync(
+                $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp/contentVersions/{contentVersionId}/files/{fileId}");
+
+            if (response.IsSuccessStatusCode)
             {
-                var response = await SendGraphRequestAsync<dynamic>(requestUrl, HttpMethod.Get, null);
-                
-                // Check if content version has been committed (processing complete)
-                if (response?.committedContentVersion != null)
+                var responseJson = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(responseJson);
+
+                if (doc.RootElement.TryGetProperty("uploadState", out var stateElement))
                 {
-                    logCallback?.Invoke("Processing complete");
-                    return true;
-                }
-            }
-            catch
-            {
-                // Continue waiting
-            }
+                    var state = stateElement.GetString();
 
-            if (i % 5 == 0 && i > 0)
-            {
-                logCallback?.Invoke($"  Still processing... ({i * 2}s elapsed)");
+                    if (state == "commitFileSuccess")
+                    {
+                        return true;
+                    }
+
+                    if (state == "commitFileFailed")
+                    {
+                        logCallback?.Invoke("  File commit failed");
+                        return false;
+                    }
+
+                    if (i % 5 == 0)
+                    {
+                        logCallback?.Invoke($"  Processing... (state: {state})");
+                    }
+                }
             }
         }
 
         return false;
     }
 
-    private async Task<T?> SendGraphRequestAsync<T>(string url, HttpMethod method, object? body) where T : class
+    private async Task CommitContentVersionToAppAsync(string appId, string contentVersionId)
     {
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _accessToken);
-
-        var request = new HttpRequestMessage(method, url);
-
-        if (body != null && (method == HttpMethod.Post || method == HttpMethod.Patch || method == HttpMethod.Put))
+        var updateRequest = new
         {
-            var json = JsonSerializer.Serialize(body, new JsonSerializerOptions 
-            { 
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase 
-            });
-            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-        }
+            odatatype = "#microsoft.graph.win32LobApp",
+            committedContentVersion = contentVersionId
+        };
 
-        var response = await httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        if (method == HttpMethod.Get || response.Content.Headers.ContentLength > 0)
+        var json = JsonSerializer.Serialize(updateRequest, new JsonSerializerOptions
         {
-            var responseJson = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<T>(responseJson, new JsonSerializerOptions 
-            { 
-                PropertyNameCaseInsensitive = true 
-            });
-        }
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+        json = json.Replace("\"odatatype\"", "\"@odata.type\"");
 
-        return null;
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var request = new HttpRequestMessage(HttpMethod.Patch,
+            $"{GraphBaseUrl}/deviceAppManagement/mobileApps/{appId}")
+        {
+            Content = content
+        };
+
+        var response = await _httpClient.SendAsync(request);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to commit content version: {response.StatusCode} - {error}");
+        }
     }
 
-    private IntuneWinMetadata ReadIntuneWinMetadata(string intunewinPath)
+    /// <summary>
+    /// Extract metadata from .intunewin file (which is a ZIP containing detection.xml)
+    /// </summary>
+    private IntuneWinMetadata? ExtractIntuneWinMetadata(string intunewinPath)
     {
-        // For now, return basic metadata
-        // In a full implementation, you would extract detection.xml from the .intunewin file
-        // The .intunewin file is a ZIP file containing metadata
-        
-        return new IntuneWinMetadata
+        try
         {
-            Manifest = Convert.ToBase64String(Encoding.UTF8.GetBytes("<ManifestData></ManifestData>"))
-        };
+            using var archive = ZipFile.OpenRead(intunewinPath);
+
+            // Find the detection.xml file in the IntuneWinPackage/Metadata folder
+            var detectionEntry = archive.Entries.FirstOrDefault(e =>
+                e.FullName.EndsWith("detection.xml", StringComparison.OrdinalIgnoreCase));
+
+            if (detectionEntry == null)
+            {
+                return null;
+            }
+
+            using var stream = detectionEntry.Open();
+            var doc = XDocument.Load(stream);
+
+            var appInfo = doc.Descendants("ApplicationInfo").FirstOrDefault();
+            var encryptionInfo = doc.Descendants("EncryptionInfo").FirstOrDefault();
+
+            if (appInfo == null || encryptionInfo == null)
+            {
+                return null;
+            }
+
+            return new IntuneWinMetadata
+            {
+                FileName = appInfo.Element("FileName")?.Value ?? appInfo.Element("SetupFile")?.Value,
+                Name = appInfo.Element("Name")?.Value,
+                UnencryptedContentSize = long.TryParse(appInfo.Element("UnencryptedContentSize")?.Value, out var size)
+                    ? size
+                    : 0,
+                MsiProductCode = appInfo.Element("MsiInfo")?.Element("MsiProductCode")?.Value,
+                EncryptionKey = encryptionInfo.Element("EncryptionKey")?.Value,
+                MacKey = encryptionInfo.Element("MacKey")?.Value,
+                InitializationVector = encryptionInfo.Element("InitializationVector")?.Value,
+                Mac = encryptionInfo.Element("Mac")?.Value,
+                ProfileIdentifier = encryptionInfo.Element("ProfileIdentifier")?.Value ?? "ProfileVersion1",
+                FileDigest = encryptionInfo.Element("FileDigest")?.Value,
+                FileDigestAlgorithm = encryptionInfo.Element("FileDigestAlgorithm")?.Value ?? "SHA256"
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        double len = bytes;
+        var order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
     }
 }
+
+#region DTOs
 
 public class IntuneWinMetadata
 {
-    public string? Manifest { get; set; }
+    public string? FileName { get; set; }
+    public string? Name { get; set; }
+    public long UnencryptedContentSize { get; set; }
+    public string? MsiProductCode { get; set; }
+    public string? EncryptionKey { get; set; }
+    public string? MacKey { get; set; }
+    public string? InitializationVector { get; set; }
+    public string? Mac { get; set; }
+    public string? ProfileIdentifier { get; set; }
+    public string? FileDigest { get; set; }
+    public string? FileDigestAlgorithm { get; set; }
 }
+
+public class ContentFileInfo
+{
+    public string? Id { get; set; }
+    public string? AzureStorageUri { get; set; }
+    public string? UploadState { get; set; }
+}
+
+public class GraphListResponse<T>
+{
+    [JsonPropertyName("value")]
+    public T[]? Value { get; set; }
+}
+
+public class OrganizationInfo
+{
+    public string? Id { get; set; }
+    public string? DisplayName { get; set; }
+}
+
+public class TokenResponse
+{
+    [JsonPropertyName("access_token")]
+    public string? AccessToken { get; set; }
+
+    [JsonPropertyName("token_type")]
+    public string? TokenType { get; set; }
+
+    [JsonPropertyName("expires_in")]
+    public int ExpiresIn { get; set; }
+}
+
+public class TokenErrorResponse
+{
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    [JsonPropertyName("error_description")]
+    public string? ErrorDescription { get; set; }
+}
+
+#endregion

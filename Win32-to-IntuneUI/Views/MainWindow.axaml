@@ -10,7 +10,7 @@
         Icon="/Assets/avalonia-logo.ico"
         Title="Win32 to Intune Package Creator"
         Width="900" Height="700"
-        MinWidth="800" MinHeight="900"
+        MinWidth="800" MinHeight="600"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -75,7 +75,7 @@
                                Margin="0,5,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ToolStatus}" 
+                    <TextBlock Text="{Binding SinglePackage.ToolStatus}" 
                                FontSize="12" 
                                FontWeight="Medium"
                                HorizontalAlignment="Right"/>
@@ -90,210 +90,210 @@
             
             <!-- Single Package Tab -->
             <TabItem Header="Single Package">
-                <Grid RowDefinitions="*,Auto">
-        <ScrollViewer Grid.Row="0">
-            <StackPanel Spacing="20">
+                <Grid RowDefinitions="*,Auto" DataContext="{Binding SinglePackage}">
+                    <ScrollViewer Grid.Row="0">
+                        <StackPanel Spacing="20">
                 
-                <!-- Source Folder Section -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Source Folder *" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <TextBlock Text="The folder containing all your application files" 
-                                   FontSize="12" 
-                                   Foreground="#7F8C8D"/>
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" 
-                                     Text="{Binding SourceFolder}"
-                                     Watermark="Select source folder..."
-                                     Margin="0,0,10,0"/>
+                            <!-- Source Folder Section -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Source Folder *" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <TextBlock Text="The folder containing all your application files" 
+                                               FontSize="12" 
+                                               Foreground="#7F8C8D"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" 
+                                                 Text="{Binding SourceFolder}"
+                                                 Watermark="Select source folder..."
+                                                 Margin="0,0,10,0"/>
+                                        <Button Grid.Column="1" 
+                                                Content="Browse..."
+                                                Command="{Binding BrowseSourceFolderCommand}"
+                                                Width="100"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Setup File Section -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Setup File *" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <TextBlock Text="The installer executable (e.g., setup.exe, install.msi)" 
+                                               FontSize="12" 
+                                               Foreground="#7F8C8D"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" 
+                                                 Text="{Binding SetupFile}"
+                                                 Watermark="Select setup file..."
+                                                 Margin="0,0,10,0"/>
+                                        <Button Grid.Column="1" 
+                                                Content="Browse..."
+                                                Command="{Binding BrowseSetupFileCommand}"
+                                                Width="100"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Output Folder Section -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Output Folder *" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <TextBlock Text="Where the .intunewin package will be saved" 
+                                               FontSize="12" 
+                                               Foreground="#7F8C8D"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" 
+                                                 Text="{Binding OutputFolder}"
+                                                 Watermark="Select output folder..."
+                                                 Margin="0,0,10,0"/>
+                                        <Button Grid.Column="1" 
+                                                Content="Browse..."
+                                                Command="{Binding BrowseOutputFolderCommand}"
+                                                Width="100"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Catalog Folder Section (Optional) -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Catalog Folder (Optional)" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <TextBlock Text="Folder containing the catalog files for the Win32 app" 
+                                               FontSize="12" 
+                                               Foreground="#7F8C8D"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBox Grid.Column="0" 
+                                                 Text="{Binding CatalogFolder}"
+                                                 Watermark="Select catalog folder (optional)..."
+                                                 Margin="0,0,10,0"/>
+                                        <Button Grid.Column="1" 
+                                                Content="Browse..."
+                                                Command="{Binding BrowseCatalogFolderCommand}"
+                                                Width="100"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Progress Section -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20"
+                                    IsVisible="{Binding IsProgressVisible}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Progress" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <ProgressBar Value="{Binding ProgressValue}" 
+                                                 Height="8"
+                                                 Foreground="#3498DB"
+                                                 Minimum="0" 
+                                                 Maximum="100"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Log Output Section -->
+                            <Border Background="White" 
+                                    BorderBrush="#E0E0E0" 
+                                    BorderThickness="1" 
+                                    CornerRadius="8" 
+                                    Padding="20">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Output Log" 
+                                               FontWeight="SemiBold" 
+                                               FontSize="14"
+                                               Foreground="#2C3E50"/>
+                                    <Border Background="#F8F9FA" 
+                                            BorderBrush="#E0E0E0" 
+                                            BorderThickness="1" 
+                                            CornerRadius="4"
+                                            Height="200">
+                                        <ScrollViewer>
+                                            <TextBox Text="{Binding LogOutput}"
+                                                     IsReadOnly="True"
+                                                     Background="Transparent"
+                                                     BorderThickness="0"
+                                                     FontFamily="Consolas,Monaco,Courier New"
+                                                     FontSize="12"
+                                                     TextWrapping="Wrap"
+                                                     AcceptsReturn="True"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Action Buttons for Single Mode -->
+                    <Border Grid.Row="1" 
+                            Background="#F5F5F5" 
+                            Padding="20" 
+                            CornerRadius="8"
+                            Margin="0,20,0,0">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBlock Grid.Column="0" 
+                                       Text="* Required fields" 
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="#7F8C8D"/>
                             <Button Grid.Column="1" 
-                                    Content="Browse..."
-                                    Command="{Binding BrowseSourceFolderCommand}"
-                                    Width="100"/>
+                                    Content="Upload to Intune"
+                                    Classes="green"
+                                    Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).UploadSinglePackageCommand}"
+                                    FontWeight="SemiBold"
+                                    Padding="20,12"
+                                    CornerRadius="6"
+                                    FontSize="14"
+                                    Margin="0,0,10,0"
+                                    IsEnabled="{Binding !IsProcessing}"/>
+                            <Button Grid.Column="2" 
+                                    Content="Create Package"
+                                    Classes="blue"
+                                    Command="{Binding CreatePackageCommand}"
+                                    FontWeight="SemiBold"
+                                    Padding="30,12"
+                                    CornerRadius="6"
+                                    FontSize="14"
+                                    IsEnabled="{Binding !IsProcessing}"/>
                         </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Setup File Section -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Setup File *" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <TextBlock Text="The installer executable (e.g., setup.exe, install.msi)" 
-                                   FontSize="12" 
-                                   Foreground="#7F8C8D"/>
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" 
-                                     Text="{Binding SetupFile}"
-                                     Watermark="Select setup file..."
-                                     Margin="0,0,10,0"/>
-                            <Button Grid.Column="1" 
-                                    Content="Browse..."
-                                    Command="{Binding BrowseSetupFileCommand}"
-                                    Width="100"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Output Folder Section -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Output Folder *" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <TextBlock Text="Where the .intunewin package will be saved" 
-                                   FontSize="12" 
-                                   Foreground="#7F8C8D"/>
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" 
-                                     Text="{Binding OutputFolder}"
-                                     Watermark="Select output folder..."
-                                     Margin="0,0,10,0"/>
-                            <Button Grid.Column="1" 
-                                    Content="Browse..."
-                                    Command="{Binding BrowseOutputFolderCommand}"
-                                    Width="100"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Catalog Folder Section (Optional) -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Catalog Folder (Optional)" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <TextBlock Text="Folder containing the catalog files for the Win32 app" 
-                                   FontSize="12" 
-                                   Foreground="#7F8C8D"/>
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBox Grid.Column="0" 
-                                     Text="{Binding CatalogFolder}"
-                                     Watermark="Select catalog folder (optional)..."
-                                     Margin="0,0,10,0"/>
-                            <Button Grid.Column="1" 
-                                    Content="Browse..."
-                                    Command="{Binding BrowseCatalogFolderCommand}"
-                                    Width="100"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Progress Section -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20"
-                        IsVisible="{Binding IsProgressVisible}">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Progress" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <ProgressBar Value="{Binding ProgressValue}" 
-                                     Height="8"
-                                     Foreground="#3498DB"
-                                     Minimum="0" 
-                                     Maximum="100"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Log Output Section -->
-                <Border Background="White" 
-                        BorderBrush="#E0E0E0" 
-                        BorderThickness="1" 
-                        CornerRadius="8" 
-                        Padding="20">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Output Log" 
-                                   FontWeight="SemiBold" 
-                                   FontSize="14"
-                                   Foreground="#2C3E50"/>
-                        <Border Background="#F8F9FA" 
-                                BorderBrush="#E0E0E0" 
-                                BorderThickness="1" 
-                                CornerRadius="4"
-                                Height="200">
-                            <ScrollViewer>
-                                <TextBox Text="{Binding LogOutput}"
-                                         IsReadOnly="True"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         FontFamily="Consolas,Monaco,Courier New"
-                                         FontSize="12"
-                                         TextWrapping="Wrap"
-                                         AcceptsReturn="True"/>
-                            </ScrollViewer>
-                        </Border>
-                    </StackPanel>
-                </Border>
-
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- Action Buttons for Single Mode -->
-        <Border Grid.Row="1" 
-                Background="#F5F5F5" 
-                Padding="20" 
-                CornerRadius="8"
-                Margin="0,20,0,0">
-            <Grid ColumnDefinitions="*,Auto,Auto">
-                <TextBlock Grid.Column="0" 
-                           Text="* Required fields" 
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="#7F8C8D"/>
-                <Button Grid.Column="1" 
-                        Content="Upload to Intune"
-                        Classes="green"
-                        Command="{Binding UploadSinglePackageCommand}"
-                        FontWeight="SemiBold"
-                        Padding="20,12"
-                        CornerRadius="6"
-                        FontSize="14"
-                        Margin="0,0,10,0"
-                        IsEnabled="{Binding !IsProcessing}"/>
-                <Button Grid.Column="2" 
-                        Content="Create Package"
-                        Classes="blue"
-                        Command="{Binding CreatePackageCommand}"
-                        FontWeight="SemiBold"
-                        Padding="30,12"
-                        CornerRadius="6"
-                        FontSize="14"
-                        IsEnabled="{Binding !IsProcessing}"/>
-            </Grid>
-        </Border>
+                    </Border>
                 </Grid>
             </TabItem>
             
             <!-- Batch Processing Tab -->
             <TabItem Header="Batch Processing">
-                <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+                <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" DataContext="{Binding BatchProcessing}">
                     
                     <!-- Instructions -->
                     <Border Grid.Row="0"
@@ -308,19 +308,19 @@
                                        FontWeight="SemiBold" 
                                        FontSize="13"
                                        Foreground="#2C3E50"/>
-                            <TextBlock Text="1. Select the parent folder containing your application subfolders" 
+                            <TextBlock Text="• Select the parent folder containing your application subfolders" 
                                        FontSize="12" 
                                        Foreground="#34495E"/>
-                            <TextBlock Text="2. Click 'Scan Folders' - a review dialog will appear" 
+                            <TextBlock Text="• Click 'Scan Folders' to review detected applications" 
                                        FontSize="12" 
                                        Foreground="#34495E"/>
-                            <TextBlock Text="3. In the dialog, manually select installers for items that need attention or skip them" 
+                            <TextBlock Text="• Select installers for items that need attention or skip them" 
                                        FontSize="12" 
                                        Foreground="#34495E"/>
-                            <TextBlock Text="4. Close the dialog, then select the output folder where packages will be saved" 
+                            <TextBlock Text="• Select the output folder where packages will be saved" 
                                        FontSize="12" 
                                        Foreground="#34495E"/>
-                            <TextBlock Text="5. Click 'Process Batch' to create all packages" 
+                            <TextBlock Text="• Click 'Process Batch' to create all packages" 
                                        FontSize="12" 
                                        Foreground="#34495E"/>
                         </StackPanel>
@@ -335,7 +335,7 @@
                             Padding="20"
                             Margin="0,0,0,20">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Step 1: Parent Folder" 
+                            <TextBlock Text="Parent Folder *" 
                                        FontWeight="SemiBold" 
                                        FontSize="14"
                                        Foreground="#2C3E50"/>
@@ -354,11 +354,11 @@
                                         Width="100"
                                         Margin="0,0,10,0"/>
                                 <Button Grid.Column="2" 
-                                        Content="Step 2: Scan Folders"
+                                        Content="Scan Folders"
                                         Classes="green"
                                         Command="{Binding ScanBatchFoldersCommand}"
                                         FontWeight="SemiBold"
-                                        Width="150"
+                                        Width="120"
                                         IsEnabled="{Binding !IsProcessing}"/>
                             </Grid>
                         </StackPanel>
@@ -373,7 +373,7 @@
                             Padding="20"
                             Margin="0,0,0,20">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="Step 4: Output Folder" 
+                            <TextBlock Text="Output Folder *" 
                                        FontWeight="SemiBold" 
                                        FontSize="14"
                                        Foreground="#2C3E50"/>
@@ -439,7 +439,7 @@
                             <Button Grid.Column="1" 
                                     Content="Upload to Intune"
                                     Classes="blue"
-                                    Command="{Binding ShowIntuneUploadDialogCommand}"
+                                    Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ShowIntuneUploadDialogCommand}"
                                     FontWeight="SemiBold"
                                     Padding="30,12"
                                     CornerRadius="6"
@@ -447,7 +447,7 @@
                                     Margin="0,0,10,0"
                                     IsEnabled="{Binding !IsProcessing}"/>
                             <Button Grid.Column="2" 
-                                    Content="Step 5: Process Batch"
+                                    Content="Process Batch"
                                     Classes="orange"
                                     Command="{Binding ProcessBatchCommand}"
                                     FontWeight="SemiBold"
