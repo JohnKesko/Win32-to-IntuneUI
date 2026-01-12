@@ -2,8 +2,6 @@
 
 A Windows app for creating `.intunewin` packages and uploading them directly to Microsoft Intune.
 
-![Win32 to Intune](img/screenshot.png)
-
 ## Download
 
 Get the latest release from [GitHub Releases](https://github.com/JohnKesko/Win32-to-IntuneUI/releases):
@@ -18,6 +16,8 @@ Get the latest release from [GitHub Releases](https://github.com/JohnKesko/Win32
 
 Create a single `.intunewin` package:
 
+![Win32 to Intune](img/img01.png)
+
 1. Select **Source Folder** (folder containing your app files)
 2. Select **Setup File** (the installer: .exe, .msi, .cmd, .bat)
 3. Select **Output Folder** (where to save the package)
@@ -26,6 +26,8 @@ Create a single `.intunewin` package:
 ### Batch Processing
 
 Process multiple applications at once:
+
+![Win32 to Intune](img/img02.png)
 
 1. Select a **Parent Folder** containing subfolders (one per app)
 2. Click **Scan Folders** - the app auto-detects installers
@@ -36,6 +38,8 @@ Process multiple applications at once:
 ### Upload to Intune
 
 Upload packages directly to Microsoft Intune:
+
+![Win32 to Intune](img/img03.png)
 
 1. Enter your Azure AD credentials (Tenant ID, Client ID, Client Secret)
 2. Click **Connect** to authenticate
