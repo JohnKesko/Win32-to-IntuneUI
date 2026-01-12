@@ -44,6 +44,15 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore ${{ env.PROJECT_PATH }}
         
+      - name: Inject update token
+        shell: pwsh
+        run: |
+          $file = "Win32-to-IntuneUI/UpdateConfig.cs"
+          $content = Get-Content $file -Raw
+          $content = $content -replace '__UPDATE_PAT_PLACEHOLDER__', '${{ secrets.UPDATE_PAT }}'
+          Set-Content $file $content
+          Write-Host "Token injected into UpdateConfig.cs"
+        
       - name: Publish Windows x64
         run: |
           dotnet publish ${{ env.PROJECT_PATH }} `
@@ -96,6 +105,11 @@ jobs:
           
       - name: Restore dependencies
         run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Inject update token
+        run: |
+          sed -i '' 's/__UPDATE_PAT_PLACEHOLDER__/${{ secrets.UPDATE_PAT }}/g' Win32-to-IntuneUI/UpdateConfig.cs
+          echo "Token injected into UpdateConfig.cs"
         
       - name: Publish macOS ARM64
         run: |
@@ -152,6 +166,11 @@ jobs:
           
       - name: Restore dependencies
         run: dotnet restore ${{ env.PROJECT_PATH }}
+        
+      - name: Inject update token
+        run: |
+          sed -i 's/__UPDATE_PAT_PLACEHOLDER__/${{ secrets.UPDATE_PAT }}/g' Win32-to-IntuneUI/UpdateConfig.cs
+          echo "Token injected into UpdateConfig.cs"
         
       - name: Publish Linux x64
         run: |

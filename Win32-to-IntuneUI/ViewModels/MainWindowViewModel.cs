@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Win32_to_IntuneUI.Services;
 using Win32_to_IntuneUI.Views;
 
 namespace Win32_to_IntuneUI.ViewModels;
@@ -30,6 +32,28 @@ public partial class MainWindowViewModel : ViewModelBase
     /// ViewModel for Intune upload functionality
     /// </summary>
     public IntuneUploadViewModel IntuneUpload { get; }
+
+    /// <summary>
+    /// Current application version
+    /// </summary>
+    public string AppVersion { get; } = GetAppVersion();
+
+    /// <summary>
+    /// Update status message
+    /// </summary>
+    [ObservableProperty]
+    private string _updateStatus = string.Empty;
+
+    /// <summary>
+    /// Whether an update is available and ready to install
+    /// </summary>
+    [ObservableProperty]
+    private bool _isUpdateAvailable;
+
+    /// <summary>
+    /// Update service instance (set by App.axaml.cs)
+    /// </summary>
+    public UpdateService? UpdateService { get; set; }
 
     private Window? _mainWindow;
     public Window? MainWindow
@@ -57,6 +81,30 @@ public partial class MainWindowViewModel : ViewModelBase
             // Populate upload candidates when batch processing completes
             IntuneUpload.PopulateFromBatchResults(candidates);
         };
+    }
+
+    private static string GetAppVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
+            ?? "1.0.0";
+
+        // Remove any +commit hash suffix
+        var plusIndex = version.IndexOf('+');
+        if (plusIndex > 0)
+            version = version[..plusIndex];
+
+        return $"v{version}";
+    }
+
+    /// <summary>
+    /// Apply the pending update and restart the application
+    /// </summary>
+    [RelayCommand]
+    private void ApplyUpdate()
+    {
+        UpdateService?.ApplyUpdateAndRestart();
     }
 
     /// <summary>

@@ -1,134 +1,97 @@
 using System;
-using System.Reflection;
 using System.Threading.Tasks;
 using Velopack;
 using Velopack.Sources;
 
 namespace Win32_to_IntuneUI.Services;
 
+/// <summary>
+/// Handles application auto-updates via Velopack and GitHub Releases.
+/// Uses UpdateConfig for centralized configuration.
+/// </summary>
 public class UpdateService
 {
-    // TODO: Update this to your actual GitHub repository
-    private const string GitHubRepoUrl = "https://github.com/JohnKesko/Win32-to-IntuneUI";
-
-    private readonly UpdateManager _updateManager;
-    private UpdateInfo? _updateInfo;
+    private UpdateManager? _updateManager;
+    private UpdateInfo? _pendingUpdate;
 
     /// <summary>
-    /// Gets the current app version from Velopack (if installed) or from assembly
+    /// Whether the app is running as an installed Velopack application
     /// </summary>
-    public string CurrentVersion =>
-        _updateManager.CurrentVersion?.ToString()
-        ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)
-        ?? "1.0.0";
+    public bool IsInstalled => _updateManager?.IsInstalled ?? false;
 
     /// <summary>
-    /// Gets the version from the assembly (defined in .csproj)
+    /// Whether an update has been downloaded and is ready to apply
     /// </summary>
-    public static string AssemblyVersion =>
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
-
-    public bool IsUpdateAvailable => _updateInfo?.TargetFullRelease != null;
-    public string? NewVersion => _updateInfo?.TargetFullRelease?.Version.ToString();
-
-    public UpdateService()
-    {
-        // Use GitHub Releases as the update source
-        var source = new GithubSource(GitHubRepoUrl, null, false);
-        _updateManager = new UpdateManager(source);
-    }
+    public bool IsUpdateReady => _pendingUpdate != null;
 
     /// <summary>
-    /// Check for updates from GitHub Releases
+    /// Version string of the pending update
     /// </summary>
-    /// <returns>True if an update is available</returns>
-    public async Task<bool> CheckForUpdatesAsync()
+    public string? PendingVersion => _pendingUpdate?.TargetFullRelease?.Version?.ToString();
+
+    /// <summary>
+    /// Initialize the update manager. Call this once at app startup.
+    /// </summary>
+    public void Initialize()
     {
         try
         {
-            // Don't check for updates in development/debug mode
-            if (!_updateManager.IsInstalled)
+            var token = UpdateConfig.HasValidToken ? UpdateConfig.GitHubToken : null;
+            var source = new GithubSource(UpdateConfig.GitHubRepoUrl, token, false);
+            _updateManager = new UpdateManager(source);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to initialize UpdateManager: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Check for updates and download if available.
+    /// </summary>
+    /// <param name="onStatusChanged">Callback for status updates</param>
+    /// <returns>True if an update was downloaded and is ready to apply</returns>
+    public async Task<bool> CheckAndDownloadAsync(Action<string>? onStatusChanged = null)
+    {
+        if (_updateManager == null || !_updateManager.IsInstalled)
+        {
+            return false;
+        }
+
+        try
+        {
+            onStatusChanged?.Invoke("Checking for updates...");
+
+            var updateInfo = await _updateManager.CheckForUpdatesAsync();
+            if (updateInfo == null)
             {
                 return false;
             }
 
-            _updateInfo = await _updateManager.CheckForUpdatesAsync();
-            return _updateInfo?.TargetFullRelease != null;
-        }
-        catch (Exception)
-        {
-            // Silently fail - update checking should not break the app
-            return false;
-        }
-    }
+            onStatusChanged?.Invoke($"Downloading v{updateInfo.TargetFullRelease.Version}...");
 
-    /// <summary>
-    /// Download and apply the update, then restart the application
-    /// </summary>
-    public async Task<bool> DownloadAndApplyUpdateAsync(Action<int>? progressCallback = null)
-    {
-        if (_updateInfo?.TargetFullRelease == null)
-            return false;
+            await _updateManager.DownloadUpdatesAsync(updateInfo);
 
-        try
-        {
-            // Download the update
-            await _updateManager.DownloadUpdatesAsync(
-                _updateInfo,
-                progress => progressCallback?.Invoke(progress));
-
-            // Apply update and restart
-            _updateManager.ApplyUpdatesAndRestart(_updateInfo);
+            _pendingUpdate = updateInfo;
+            onStatusChanged?.Invoke($"Update v{updateInfo.TargetFullRelease.Version} ready");
 
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Update check failed: {ex.Message}");
             return false;
         }
     }
 
     /// <summary>
-    /// Download update without applying (apply on next restart)
+    /// Apply the pending update and restart the application.
     /// </summary>
-    public async Task<bool> DownloadUpdateAsync(Action<int>? progressCallback = null)
+    public void ApplyUpdateAndRestart()
     {
-        if (_updateInfo?.TargetFullRelease == null)
-            return false;
-
-        try
+        if (_updateManager != null && _pendingUpdate != null)
         {
-            await _updateManager.DownloadUpdatesAsync(
-                _updateInfo,
-                progress => progressCallback?.Invoke(progress));
-
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Apply downloaded updates and restart
-    /// </summary>
-    public void ApplyUpdatesAndRestart()
-    {
-        if (_updateInfo != null)
-        {
-            _updateManager.ApplyUpdatesAndRestart(_updateInfo);
-        }
-    }
-
-    /// <summary>
-    /// Wait for the update to be applied on next launch (no restart)
-    /// </summary>
-    public void ApplyUpdatesOnExit()
-    {
-        if (_updateInfo != null)
-        {
-            _updateManager.ApplyUpdatesAndExit(_updateInfo);
+            _updateManager.ApplyUpdatesAndRestart(_pendingUpdate);
         }
     }
 }
