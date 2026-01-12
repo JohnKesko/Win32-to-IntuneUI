@@ -69,16 +69,15 @@ public class UpdateService
         }
 
         // Check if token is configured for private repo
-        if (!UpdateConfig.HasValidToken)
+        var token = UpdateConfig.GitHubToken;
+        var hasValidToken = !string.IsNullOrEmpty(token) && token != "__UPDATE_PAT_PLACEHOLDER__";
+        
+        if (!hasValidToken)
         {
-            // Debug: Show what the token looks like and why validation failed
-            var token = UpdateConfig.GitHubToken;
-            var isEmpty = string.IsNullOrEmpty(token);
-            var isPlaceholder = token == "__UPDATE_PAT_PLACEHOLDER__";
             var tokenPreview = token.Length > 10
                 ? $"{token[..4]}...{token[^4..]} (len={token.Length})"
                 : $"(short, len={token.Length})";
-            onStatusChanged?.Invoke($"Token check failed: empty={isEmpty}, placeholder={isPlaceholder}, preview={tokenPreview}");
+            onStatusChanged?.Invoke($"Invalid token: {tokenPreview}");
             return false;
         }
 
