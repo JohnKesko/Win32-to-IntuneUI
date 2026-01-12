@@ -305,6 +305,7 @@ public class IntuneGraphService
             description = string.IsNullOrEmpty(description) ? displayName : description,
             publisher = "Uploaded via Win32-to-IntuneUI",
             fileName,
+            setupFilePath = fileName,
             installCommandLine = installCommand,
             uninstallCommandLine = uninstallCommand,
             installExperience = new

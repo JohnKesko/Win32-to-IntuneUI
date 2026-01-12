@@ -125,6 +125,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(UploadSelectionCount));
+        StartIntuneUploadCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -154,6 +155,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
             : "No valid packages found";
 
         OnPropertyChanged(nameof(UploadSelectionCount));
+        StartIntuneUploadCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
