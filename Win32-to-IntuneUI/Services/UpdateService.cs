@@ -71,7 +71,11 @@ public class UpdateService
         // Check if token is configured for private repo
         if (!UpdateConfig.HasValidToken)
         {
-            onStatusChanged?.Invoke("No update token configured");
+            // Debug: Show what the token looks like (safely)
+            var tokenPreview = UpdateConfig.GitHubToken.Length > 10 
+                ? $"{UpdateConfig.GitHubToken[..4]}...{UpdateConfig.GitHubToken[^4..]}" 
+                : "(short)";
+            onStatusChanged?.Invoke($"Invalid token: {tokenPreview}");
             return false;
         }
 
@@ -81,10 +85,10 @@ public class UpdateService
 
             // Add timeout to prevent hanging
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds));
-            
+
             var checkTask = _updateManager.CheckForUpdatesAsync();
             var completedTask = await Task.WhenAny(checkTask, Task.Delay(TimeSpan.FromSeconds(TimeoutSeconds), cts.Token));
-            
+
             if (completedTask != checkTask)
             {
                 onStatusChanged?.Invoke("Update check timed out");
