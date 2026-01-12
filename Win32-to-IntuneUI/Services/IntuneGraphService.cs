@@ -115,45 +115,30 @@ public class IntuneGraphService
 
         try
         {
-            // Step 1: Test basic connectivity by getting organization info
-            var orgResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/organization");
-            var orgErrorContent = await orgResponse.Content.ReadAsStringAsync();
-
-            if (!orgResponse.IsSuccessStatusCode)
-            {
-                if (orgResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                {
-                    return (false, "Unauthorized - token may be expired or invalid");
-                }
-                if (orgResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                {
-                    // Parse the error for more details
-                    var errorDetail = TryParseGraphError(orgErrorContent);
-                    return (false,
-                        $"Forbidden - Organization access denied.\n\n" +
-                        $"Error: {errorDetail}\n\n" +
-                        "Ensure the app has 'Organization.Read.All' permission and admin consent is granted.");
-                }
-                return (false, $"Connection failed: {orgResponse.StatusCode}\n{orgErrorContent}");
-            }
-
-            var orgData = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(orgErrorContent);
-            var orgName = orgData?.Value?.FirstOrDefault()?.DisplayName ?? "Unknown Organization";
-
-            // Step 2: Test DeviceManagementApps.ReadWrite.All permission
-            // Try to list mobile apps - this requires the correct permission
+            // Test DeviceManagementApps.ReadWrite.All permission directly
+            // This is the only permission needed for Win32 app uploads
             var appsResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/deviceAppManagement/mobileApps?$top=1");
-            var appsErrorContent = await appsResponse.Content.ReadAsStringAsync();
+            var appsContent = await appsResponse.Content.ReadAsStringAsync();
 
             if (!appsResponse.IsSuccessStatusCode)
             {
-                var errorDetail = TryParseGraphError(appsErrorContent);
+                var errorDetail = TryParseGraphError(appsContent);
+
+                if (appsResponse.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    return (false, 
+                        "Unauthorized - Invalid credentials.\n\n" +
+                        $"Error: {errorDetail}\n\n" +
+                        "Please verify:\n" +
+                        "• Tenant ID is correct\n" +
+                        "• Client ID (Application ID) is correct\n" +
+                        "• Client Secret is the Value (not the Secret ID)");
+                }
 
                 if (appsResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
                 {
                     return (false,
-                        $"✓ Connected to: {orgName}\n\n" +
-                        "Error: Missing required permission.\n\n" +
+                        "Missing required permission.\n\n" +
                         $"Error: {errorDetail}\n\n" +
                         "The app needs 'DeviceManagementApps.ReadWrite.All' (Application permission).\n\n" +
                         "To fix:\n" +
@@ -165,10 +150,11 @@ public class IntuneGraphService
                         "6. Wait 1-2 minutes for propagation, then retry");
                 }
 
-                return (false, $"Connected to {orgName}, but permission check failed:\n{appsResponse.StatusCode} - {errorDetail}");
+                return (false, $"Connection failed: {appsResponse.StatusCode}\n{errorDetail}");
             }
 
-            return (true, $"✓ Connected to: {orgName}\n✓ Intune app permissions verified");
+            // Try to get tenant name from a successful response or just confirm success
+            return (true, "✓ Connected to Intune\n✓ DeviceManagementApps.ReadWrite.All permission verified");
         }
         catch (Exception ex)
         {
