@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Win32_to_IntuneUI.Models;
 
 namespace Win32_to_IntuneUI.Services;
 
@@ -189,6 +190,7 @@ public class IntuneGraphService
         string installCommand = "",
         string uninstallCommand = "",
         string publisher = "",
+        List<DetectionRule>? detectionRules = null,
         Action<string>? logCallback = null)
     {
         if (string.IsNullOrWhiteSpace(_accessToken))
@@ -230,7 +232,7 @@ public class IntuneGraphService
 
             // Step 2: Create the Win32LobApp
             logCallback?.Invoke("Step 2: Creating app registration in Intune...");
-            var appId = await CreateWin32LobAppAsync(displayName, description, installCommand, uninstallCommand, publisher, metadata);
+            var appId = await CreateWin32LobAppAsync(displayName, description, installCommand, uninstallCommand, publisher, detectionRules, metadata);
 
             if (string.IsNullOrEmpty(appId))
                 return (false, "Failed to create app in Intune", null);
@@ -315,6 +317,7 @@ public class IntuneGraphService
         string installCommand,
         string uninstallCommand,
         string publisher,
+        List<DetectionRule>? customDetectionRules,
         IntuneWinMetadata metadata)
     {
         var fileName = metadata.FileName ?? "setup.exe";
@@ -340,9 +343,14 @@ public class IntuneGraphService
             publisher = "Uploaded via Win32-to-IntuneUI";
         }
 
-        // Build detection rules - prefer MSI product code if available
+        // Build detection rules - use custom rules if provided, otherwise generate defaults
         object[] detectionRules;
-        if (!string.IsNullOrEmpty(metadata.MsiProductCode))
+        if (customDetectionRules != null && customDetectionRules.Count > 0)
+        {
+            // Convert custom detection rules to Graph API format
+            detectionRules = customDetectionRules.Select(ConvertDetectionRuleToGraphFormat).ToArray();
+        }
+        else if (!string.IsNullOrEmpty(metadata.MsiProductCode))
         {
             // MSI product code detection - most reliable for MSI packages
             detectionRules = new object[]
@@ -427,6 +435,118 @@ public class IntuneGraphService
         return doc.RootElement.TryGetProperty("id", out var idElement)
             ? idElement.GetString()
             : null;
+    }
+
+    /// <summary>
+    /// Converts a DetectionRule from intuneconfig.json to the Graph API format
+    /// </summary>
+    private static object ConvertDetectionRuleToGraphFormat(DetectionRule rule)
+    {
+        return rule.Type.ToLowerInvariant() switch
+        {
+            "registry" => new
+            {
+                odatatype = "#microsoft.graph.win32LobAppRegistryRule",
+                ruleType = "detection",
+                keyPath = rule.KeyPath,
+                valueName = rule.ValueName,
+                operationType = MapDetectionMethodToRegistryOperationType(rule.DetectionMethod, rule.Operator),
+                @operator = MapOperatorToRegistryOperator(rule.Operator),
+                comparisonValue = rule.DetectionValue,
+                check32BitOn64System = rule.Check32BitOn64System,
+                registryHive = MapHiveToGraphHive(rule.Hive)
+            },
+            "file" => new
+            {
+                odatatype = "#microsoft.graph.win32LobAppFileSystemRule",
+                ruleType = "detection",
+                path = rule.Path,
+                fileOrFolderName = rule.FileOrFolderName,
+                check32BitOn64System = rule.Check32BitOn64System,
+                operationType = MapDetectionMethodToFileOperationType(rule.DetectionMethod)
+            },
+            "msi" => new
+            {
+                odatatype = "#microsoft.graph.win32LobAppProductCodeRule",
+                ruleType = "detection",
+                productCode = rule.ProductCode,
+                productVersionOperator = rule.ProductVersionOperator ?? "notConfigured",
+                productVersion = rule.ProductVersion
+            },
+            "script" => new
+            {
+                odatatype = "#microsoft.graph.win32LobAppPowerShellScriptRule",
+                ruleType = "detection",
+                scriptContent = Convert.ToBase64String(Encoding.UTF8.GetBytes(rule.ScriptContent ?? "")),
+                enforceSignatureCheck = rule.EnforceSignatureCheck,
+                runAs32Bit = rule.RunAs32Bit,
+                operationType = "notConfigured",
+                @operator = "notConfigured",
+                comparisonValue = (string?)null
+            },
+            _ => throw new ArgumentException($"Unknown detection rule type: {rule.Type}")
+        };
+    }
+
+    private static string MapHiveToGraphHive(string? hive)
+    {
+        return hive?.ToLowerInvariant() switch
+        {
+            "localmachine" => "localMachine",
+            "currentuser" => "currentUser",
+            _ => "localMachine"
+        };
+    }
+
+    private static string MapDetectionMethodToRegistryOperationType(string? method, string? op)
+    {
+        // If operator is "exists" or method is null/exists, use existence check
+        if (string.Equals(op, "exists", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(method, "exists", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrEmpty(method))
+        {
+            return "exists";
+        }
+
+        return method?.ToLowerInvariant() switch
+        {
+            "notexists" => "notExists",
+            "string" => "string",
+            "integer" => "integer",
+            "version" => "version",
+            _ => "exists"
+        };
+    }
+
+    private static string MapOperatorToRegistryOperator(string? op)
+    {
+        return op?.ToLowerInvariant() switch
+        {
+            "exists" => "notConfigured",
+            "notexists" => "notConfigured",
+            "equal" => "equal",
+            "notequal" => "notEqual",
+            "greaterthan" => "greaterThan",
+            "greaterthanorequal" => "greaterThanOrEqual",
+            "lessthan" => "lessThan",
+            "lessthanorequal" => "lessThanOrEqual",
+            _ => "notConfigured"
+        };
+    }
+
+    private static string MapDetectionMethodToFileOperationType(string? method)
+    {
+        return method?.ToLowerInvariant() switch
+        {
+            "exists" => "exists",
+            "notexists" => "notExists",
+            "modifieddate" => "modifiedDate",
+            "createddate" => "createdDate",
+            "version" => "version",
+            "sizeinkb" => "sizeInKB",
+            "sizeinmb" => "sizeInMB",
+            _ => "exists"
+        };
     }
 
     private async Task<string?> CreateContentVersionAsync(string appId)

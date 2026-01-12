@@ -52,7 +52,7 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="20">
         <!-- Header -->
         <StackPanel Grid.Row="0" Spacing="10" Margin="0,0,0,20">
             <TextBlock Text="Upload Packages to Microsoft Intune" 
@@ -216,8 +216,93 @@
             </Grid>
         </Border>
 
+        <!-- Progress Section -->
+        <Border Grid.Row="2"
+                IsVisible="{Binding IsProgressVisible}"
+                Background="#F0F4F8"
+                BorderBrush="#3498DB"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="15"
+                Margin="0,15,0,0">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding ProgressText}"
+                               FontWeight="SemiBold"
+                               Foreground="#2C3E50"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                        <!-- Spinning indicator -->
+                        <Border Width="16" Height="16" 
+                                Background="#3498DB" 
+                                CornerRadius="8"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <RotateTransform/>
+                            </Border.RenderTransform>
+                            <Border.Styles>
+                                <Style Selector="Border">
+                                    <Style.Animations>
+                                        <Animation Duration="0:0:1" IterationCount="Infinite">
+                                            <KeyFrame Cue="0%">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </KeyFrame>
+                                            <KeyFrame Cue="50%">
+                                                <Setter Property="Opacity" Value="0.3"/>
+                                            </KeyFrame>
+                                            <KeyFrame Cue="100%">
+                                                <Setter Property="Opacity" Value="1"/>
+                                            </KeyFrame>
+                                        </Animation>
+                                    </Style.Animations>
+                                </Style>
+                            </Border.Styles>
+                        </Border>
+                        <TextBlock Text="Processing..." Foreground="#7F8C8D" FontSize="12"/>
+                    </StackPanel>
+                </Grid>
+                <ProgressBar Minimum="0" 
+                             Maximum="{Binding ProgressTotal}" 
+                             Value="{Binding ProgressCurrent}"
+                             Height="8"
+                             Foreground="#3498DB"
+                             Background="#E8E8E8"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Completion Banner -->
+        <Border Grid.Row="2"
+                IsVisible="{Binding IsUploadComplete}"
+                Background="{Binding CompletionBannerBackground}"
+                BorderBrush="{Binding CompletionBannerBorder}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="15"
+                Margin="0,15,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding CompletionIcon}"
+                           FontSize="24"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding CompletionTitle}"
+                               FontWeight="Bold"
+                               FontSize="14"/>
+                    <TextBlock Text="{Binding CompletionMessage}"
+                               Foreground="#5D6D7E"
+                               FontSize="12"/>
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Content="Dismiss"
+                        Classes="gray"
+                        Command="{Binding DismissCompletionCommand}"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
         <!-- Action Buttons -->
-        <StackPanel Grid.Row="2" 
+        <StackPanel Grid.Row="3" 
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right" 
                     Spacing="10" 
@@ -237,6 +322,7 @@
             <Button Content="Start Upload"
                     Classes="green"
                     Command="{Binding StartIntuneUploadCommand}"
+                    IsEnabled="{Binding !IsProcessing}"
                     Width="120"/>
         </StackPanel>
     </Grid>

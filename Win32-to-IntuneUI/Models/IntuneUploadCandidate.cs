@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Win32_to_IntuneUI.Services;
 
 namespace Win32_to_IntuneUI.Models;
 
@@ -40,6 +41,20 @@ public partial class IntuneUploadCandidate : ObservableObject
         ("cleanup.bat", false),
     ];
 
+    // Known launcher exe patterns with install/uninstall arguments
+    // These are common enterprise package launcher patterns
+    private static readonly (string ExePattern, string InstallArg, string UninstallArg)[] LauncherPatterns =
+    [
+        // Common launcher argument patterns
+        ("Launcher.exe", "-i", "-u"),
+        ("Launcher.exe", "-install", "-uninstall"),
+        ("Launcher.exe", "-os", "-os"),  // Some launchers use same arg
+        ("Setup.exe", "-i", "-u"),
+        ("Setup.exe", "-install", "-uninstall"),
+        ("Installer.exe", "-i", "-u"),
+        ("Deploy.exe", "-i", "-u"),
+    ];
+
     [ObservableProperty]
     private bool _isSelected = true; // Selected by default
 
@@ -73,6 +88,11 @@ public partial class IntuneUploadCandidate : ObservableObject
 
     [ObservableProperty]
     private string _description = string.Empty;
+
+    /// <summary>
+    /// Custom detection rules from intuneconfig.json
+    /// </summary>
+    public List<DetectionRule>? DetectionRules { get; set; }
 
     public string PackageFileName => Path.GetFileName(PackageFilePath);
 
@@ -223,6 +243,7 @@ public partial class IntuneUploadCandidate : ObservableObject
 
     /// <summary>
     /// Generates default install/uninstall commands based on the setup filename.
+    /// Uses PE file analysis for EXE files to detect installer type and extract metadata.
     /// Used as fallback when no scripts are detected.
     /// </summary>
     public void GenerateDefaultCommands(string? setupFileName = null)
@@ -234,23 +255,160 @@ public partial class IntuneUploadCandidate : ObservableObject
         if (baseName.EndsWith(".intunewin", StringComparison.OrdinalIgnoreCase))
             baseName = baseName[..^10];
 
-        // Try common patterns
-        if (baseName.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+        // Determine the actual file path for analysis
+        string? setupFilePath = null;
+        if (!string.IsNullOrEmpty(SourceFolderPath) && !string.IsNullOrEmpty(setupFileName))
         {
-            InstallCommand = $"msiexec /i \"{baseName}\" /qn";
-            UninstallCommand = $"msiexec /x \"{baseName}\" /qn";
+            setupFilePath = Path.Combine(SourceFolderPath, setupFileName);
         }
-        else if (baseName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+
+        // Handle MSI files
+        if (baseName.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) ||
+            (setupFileName?.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) ?? false))
         {
-            InstallCommand = $"\"{baseName}\" /S";
-            UninstallCommand = $"\"{baseName}\" /S /uninstall";
+            var msiName = setupFileName ?? baseName;
+            if (!msiName.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+                msiName += ".msi";
+
+            InstallCommand = $"msiexec /i \"{msiName}\" /qn /norestart";
+            UninstallCommand = $"msiexec /x \"{msiName}\" /qn /norestart";
+            return;
         }
-        else
+
+        // Handle CMD/BAT files (custom scripts)
+        if (setupFileName?.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) == true ||
+            setupFileName?.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) == true)
         {
-            // Default to .exe assumption
-            var exeName = baseName + ".exe";
+            InstallCommand = setupFileName;
+            // Try to find corresponding uninstall script
+            var uninstallName = setupFileName
+                .Replace("install", "uninstall", StringComparison.OrdinalIgnoreCase)
+                .Replace("setup", "uninstall", StringComparison.OrdinalIgnoreCase);
+            if (uninstallName != setupFileName)
+                UninstallCommand = uninstallName;
+            return;
+        }
+
+        // Handle EXE files - check for launcher patterns first, then PE analysis
+        if (setupFileName?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true ||
+            baseName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            var exeName = setupFileName ?? (baseName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                ? baseName
+                : baseName + ".exe");
+
+            // Check if this matches a known launcher pattern
+            var launcherMatch = TryMatchLauncherPattern(exeName);
+            if (launcherMatch.HasValue)
+            {
+                InstallCommand = $"\"{exeName}\" {launcherMatch.Value.InstallArg}";
+                UninstallCommand = $"\"{exeName}\" {launcherMatch.Value.UninstallArg}";
+
+                // Still try to extract metadata from PE file
+                if (setupFilePath != null && File.Exists(setupFilePath))
+                {
+                    var peMetadata = PeFileAnalyzer.Analyze(setupFilePath);
+                    ApplyPeMetadata(peMetadata, exeName);
+                }
+                return;
+            }
+
+            // Try PE file analysis if the file exists
+            if (setupFilePath != null && File.Exists(setupFilePath))
+            {
+                var peResult = PeFileAnalyzer.Analyze(setupFilePath);
+
+                // Apply extracted metadata if not already set
+                ApplyPeMetadata(peResult, exeName);
+
+                // Use detected installer switches if available
+                if (!string.IsNullOrEmpty(peResult.SuggestedSilentSwitch))
+                {
+                    InstallCommand = $"\"{exeName}\" {peResult.SuggestedSilentSwitch}";
+
+                    if (!string.IsNullOrEmpty(peResult.SuggestedUninstallSwitch))
+                    {
+                        UninstallCommand = $"\"{exeName}\" {peResult.SuggestedUninstallSwitch}";
+                    }
+                    return;
+                }
+            }
+
+            // Default EXE handling - try common silent switches
             InstallCommand = $"\"{exeName}\" /S";
             UninstallCommand = $"\"{exeName}\" /S /uninstall";
+            return;
+        }
+
+        // Fallback: assume .exe
+        var defaultExeName = baseName + ".exe";
+        InstallCommand = $"\"{defaultExeName}\" /S";
+        UninstallCommand = $"\"{defaultExeName}\" /S /uninstall";
+    }
+
+    /// <summary>
+    /// Tries to match the exe name against known launcher patterns.
+    /// </summary>
+    private static (string InstallArg, string UninstallArg)? TryMatchLauncherPattern(string exeName)
+    {
+        var fileName = Path.GetFileName(exeName);
+
+        foreach (var (exePattern, installArg, uninstallArg) in LauncherPatterns)
+        {
+            if (string.Equals(fileName, exePattern, StringComparison.OrdinalIgnoreCase))
+            {
+                return (installArg, uninstallArg);
+            }
+        }
+
+        // Also check for common launcher naming patterns
+        var lowerName = fileName.ToLowerInvariant();
+        if (lowerName.Contains("launcher"))
+        {
+            // Default launcher args
+            return ("-i", "-u");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Applies metadata extracted from PE file analysis to fill in missing fields.
+    /// </summary>
+    private void ApplyPeMetadata(PeFileAnalyzer.AnalysisResult peResult, string exeName)
+    {
+        // Only apply if fields are not already set (from intuneconfig.json or .txt files)
+
+        // Apply display name from PE file
+        if (string.IsNullOrEmpty(DisplayName) || DisplayName == FolderName)
+        {
+            var appName = PeFileAnalyzer.GetBestAppName(peResult);
+            var version = PeFileAnalyzer.GetBestVersion(peResult);
+
+            if (!string.IsNullOrEmpty(appName))
+            {
+                DisplayName = !string.IsNullOrEmpty(version)
+                    ? $"{appName} {version}"
+                    : appName;
+            }
+        }
+
+        // Apply publisher from PE file
+        if (string.IsNullOrEmpty(Publisher))
+        {
+            if (!string.IsNullOrEmpty(peResult.CompanyName))
+            {
+                Publisher = peResult.CompanyName;
+            }
+        }
+
+        // Apply description from PE file
+        if (string.IsNullOrEmpty(Description))
+        {
+            if (!string.IsNullOrEmpty(peResult.FileDescription))
+            {
+                Description = peResult.FileDescription;
+            }
         }
     }
 }

@@ -38,6 +38,14 @@ public partial class IntuneUploadViewModel : ViewModelBase
     [ObservableProperty] private bool _isProgressVisible;
     [ObservableProperty] private int _parallelUploads = 3; // Default parallel uploads (conservative for API rate limits)
 
+    // Completion banner
+    [ObservableProperty] private bool _isUploadComplete;
+    [ObservableProperty] private string _completionIcon = "✓";
+    [ObservableProperty] private string _completionTitle = string.Empty;
+    [ObservableProperty] private string _completionMessage = string.Empty;
+    [ObservableProperty] private string _completionBannerBackground = "#D4EDDA";
+    [ObservableProperty] private string _completionBannerBorder = "#28A745";
+
     public string UploadSelectionCount => $"{UploadCandidates.Count(c => c.IsSelected)} of {UploadCandidates.Count} selected";
 
     private readonly IntuneGraphService _intuneGraphService;
@@ -70,18 +78,19 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready"
             };
 
-            // Apply config from intuneconfig.json if available
+            // Priority 1: Apply config from intuneconfig.json if available
             if (candidate.IntuneConfig != null)
             {
-                var config = candidate.IntuneConfig;
-                if (!string.IsNullOrWhiteSpace(config.InstallCommand))
-                    uploadCandidate.InstallCommand = config.InstallCommand;
-                if (!string.IsNullOrWhiteSpace(config.UninstallCommand))
-                    uploadCandidate.UninstallCommand = config.UninstallCommand;
-                if (!string.IsNullOrWhiteSpace(config.Publisher))
-                    uploadCandidate.Publisher = config.Publisher;
-                if (!string.IsNullOrWhiteSpace(config.Description))
-                    uploadCandidate.Description = config.Description;
+                ApplyIntuneConfig(uploadCandidate, candidate.IntuneConfig);
+            }
+            // Priority 2: Try to parse package info from .txt files in the source folder
+            else
+            {
+                var packageInfo = PackageInfoParser.TryParseFromFolder(candidate.FolderPath);
+                if (packageInfo != null)
+                {
+                    ApplyPackageInfo(uploadCandidate, packageInfo);
+                }
             }
 
             // Detect scripts and generate commands for any fields not set by config
@@ -96,6 +105,50 @@ public partial class IntuneUploadViewModel : ViewModelBase
             : "No packages available";
 
         OnPropertyChanged(nameof(UploadSelectionCount));
+    }
+
+    /// <summary>
+    /// Applies IntuneConfigFile settings to an upload candidate
+    /// </summary>
+    private static void ApplyIntuneConfig(IntuneUploadCandidate candidate, IntuneConfigFile config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.DisplayName))
+            candidate.DisplayName = config.DisplayName;
+        if (!string.IsNullOrWhiteSpace(config.InstallCommand))
+            candidate.InstallCommand = config.InstallCommand;
+        if (!string.IsNullOrWhiteSpace(config.UninstallCommand))
+            candidate.UninstallCommand = config.UninstallCommand;
+        if (!string.IsNullOrWhiteSpace(config.Publisher))
+            candidate.Publisher = config.Publisher;
+        if (!string.IsNullOrWhiteSpace(config.Description))
+            candidate.Description = config.Description;
+        if (config.DetectionRules != null && config.DetectionRules.Count > 0)
+            candidate.DetectionRules = config.DetectionRules;
+    }
+
+    /// <summary>
+    /// Applies parsed PackageInfo to an upload candidate
+    /// </summary>
+    private static void ApplyPackageInfo(IntuneUploadCandidate candidate, PackageInfoParser.PackageInfo info)
+    {
+        // Build display name with version
+        if (!string.IsNullOrWhiteSpace(info.Name))
+        {
+            candidate.DisplayName = !string.IsNullOrWhiteSpace(info.Version)
+                ? $"{info.Name} {info.Version}"
+                : info.Name;
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.InstallCommand))
+            candidate.InstallCommand = info.InstallCommand;
+        if (!string.IsNullOrWhiteSpace(info.UninstallCommand))
+            candidate.UninstallCommand = info.UninstallCommand;
+        if (!string.IsNullOrWhiteSpace(info.Publisher))
+            candidate.Publisher = info.Publisher;
+        if (!string.IsNullOrWhiteSpace(info.Description))
+            candidate.Description = info.Description;
+        if (info.DetectionRules.Count > 0)
+            candidate.DetectionRules = info.DetectionRules;
     }
 
     /// <summary>
@@ -261,6 +314,9 @@ public partial class IntuneUploadViewModel : ViewModelBase
             return;
         }
 
+        // Hide any previous completion banner
+        IsUploadComplete = false;
+
         IsProcessing = true;
         IsProgressVisible = true;
         ProgressTotal = selectedCandidates.Count;
@@ -299,6 +355,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
                     candidate.InstallCommand ?? "",
                     candidate.UninstallCommand ?? "",
                     candidate.Publisher ?? "",
+                    candidate.DetectionRules,
                     msg => AppendLogThreadSafe($"  [{candidate.DisplayName}] {msg}"));
 
                 lock (lockObj)
@@ -355,6 +412,48 @@ public partial class IntuneUploadViewModel : ViewModelBase
         }
 
         UploadStatusText = $"Complete: {successCount} uploaded, {failedCount} failed";
+
+        // Show completion banner
+        ShowCompletionBanner(successCount, failedCount, elapsed);
+    }
+
+    private void ShowCompletionBanner(int successCount, int failedCount, TimeSpan elapsed)
+    {
+        if (failedCount == 0 && successCount > 0)
+        {
+            // All succeeded
+            CompletionIcon = "✓";
+            CompletionTitle = "Upload Complete!";
+            CompletionMessage = $"{successCount} package(s) uploaded successfully in {elapsed:mm\\:ss}";
+            CompletionBannerBackground = "#D4EDDA";
+            CompletionBannerBorder = "#28A745";
+        }
+        else if (successCount == 0 && failedCount > 0)
+        {
+            // All failed
+            CompletionIcon = "✗";
+            CompletionTitle = "Upload Failed";
+            CompletionMessage = $"All {failedCount} package(s) failed to upload. Check the log for details.";
+            CompletionBannerBackground = "#F8D7DA";
+            CompletionBannerBorder = "#DC3545";
+        }
+        else
+        {
+            // Partial success
+            CompletionIcon = "⚠";
+            CompletionTitle = "Upload Partially Complete";
+            CompletionMessage = $"{successCount} succeeded, {failedCount} failed in {elapsed:mm\\:ss}";
+            CompletionBannerBackground = "#FFF3CD";
+            CompletionBannerBorder = "#FFC107";
+        }
+
+        IsUploadComplete = true;
+    }
+
+    [RelayCommand]
+    private void DismissCompletion()
+    {
+        IsUploadComplete = false;
     }
 
     private void UpdateProgressText(int current, int total, DateTime startTime)
