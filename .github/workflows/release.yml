@@ -3,8 +3,8 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
-  workflow_dispatch:  # Allows manual trigger from GitHub UI
+      - 'v*'
+  workflow_dispatch:
     inputs:
       version:
         description: 'Version to release (without v prefix)'
@@ -50,22 +50,20 @@ jobs:
           UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
           $file = "Win32-to-IntuneUI/UpdateConfig.cs"
-          $content = Get-Content $file -Raw
           $token = $env:UPDATE_TOKEN
           if ([string]::IsNullOrEmpty($token)) {
             Write-Host "WARNING: UPDATE_PAT secret is not set!"
           } else {
-            Write-Host "Token found (length: $($token.Length)), injecting into UpdateConfig.cs"
-            # Use literal string replacement, not regex
+            Write-Host "Token found (length: $($token.Length)), injecting..."
+            $content = Get-Content $file -Raw
             $content = $content.Replace('__UPDATE_PAT_PLACEHOLDER__', $token)
-            Set-Content $file $content -NoNewline
-            # Verify the replacement worked
+            [System.IO.File]::WriteAllText($file, $content)
             $verify = Get-Content $file -Raw
             if ($verify.Contains('__UPDATE_PAT_PLACEHOLDER__')) {
-              Write-Host "ERROR: Placeholder still present after replacement!"
-            } else {
-              Write-Host "Token injected and verified successfully"
+              Write-Host "ERROR: Placeholder still present!"
+              exit 1
             }
+            Write-Host "Token injected and verified successfully"
           }
         
       - name: Publish Windows x64
@@ -122,27 +120,26 @@ jobs:
         run: dotnet restore ${{ env.PROJECT_PATH }}
         
       - name: Inject update token
+        shell: pwsh
         env:
           UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
-          if [ -z "$UPDATE_TOKEN" ]; then
-            echo "WARNING: UPDATE_PAT secret is not set!"
-          else
-            echo "Token found (length: ${#UPDATE_TOKEN}), injecting into UpdateConfig.cs"
-            python3 -c "
-import os
-with open('Win32-to-IntuneUI/UpdateConfig.cs', 'r') as f:
-    content = f.read()
-token = os.environ['UPDATE_TOKEN']
-content = content.replace('__UPDATE_PAT_PLACEHOLDER__', token)
-with open('Win32-to-IntuneUI/UpdateConfig.cs', 'w') as f:
-    f.write(content)
-if '__UPDATE_PAT_PLACEHOLDER__' in open('Win32-to-IntuneUI/UpdateConfig.cs').read():
-    print('ERROR: Placeholder still present!')
-else:
-    print('Token injected and verified successfully')
-"
-          fi
+          $file = "Win32-to-IntuneUI/UpdateConfig.cs"
+          $token = $env:UPDATE_TOKEN
+          if ([string]::IsNullOrEmpty($token)) {
+            Write-Host "WARNING: UPDATE_PAT secret is not set!"
+          } else {
+            Write-Host "Token found (length: $($token.Length)), injecting..."
+            $content = Get-Content $file -Raw
+            $content = $content.Replace('__UPDATE_PAT_PLACEHOLDER__', $token)
+            [System.IO.File]::WriteAllText($file, $content)
+            $verify = Get-Content $file -Raw
+            if ($verify.Contains('__UPDATE_PAT_PLACEHOLDER__')) {
+              Write-Host "ERROR: Placeholder still present!"
+              exit 1
+            }
+            Write-Host "Token injected and verified successfully"
+          }
         
       - name: Publish macOS ARM64
         run: |
@@ -201,27 +198,26 @@ else:
         run: dotnet restore ${{ env.PROJECT_PATH }}
         
       - name: Inject update token
+        shell: pwsh
         env:
           UPDATE_TOKEN: ${{ secrets.UPDATE_PAT }}
         run: |
-          if [ -z "$UPDATE_TOKEN" ]; then
-            echo "WARNING: UPDATE_PAT secret is not set!"
-          else
-            echo "Token found (length: ${#UPDATE_TOKEN}), injecting into UpdateConfig.cs"
-            python3 -c "
-import os
-with open('Win32-to-IntuneUI/UpdateConfig.cs', 'r') as f:
-    content = f.read()
-token = os.environ['UPDATE_TOKEN']
-content = content.replace('__UPDATE_PAT_PLACEHOLDER__', token)
-with open('Win32-to-IntuneUI/UpdateConfig.cs', 'w') as f:
-    f.write(content)
-if '__UPDATE_PAT_PLACEHOLDER__' in open('Win32-to-IntuneUI/UpdateConfig.cs').read():
-    print('ERROR: Placeholder still present!')
-else:
-    print('Token injected and verified successfully')
-"
-          fi
+          $file = "Win32-to-IntuneUI/UpdateConfig.cs"
+          $token = $env:UPDATE_TOKEN
+          if ([string]::IsNullOrEmpty($token)) {
+            Write-Host "WARNING: UPDATE_PAT secret is not set!"
+          } else {
+            Write-Host "Token found (length: $($token.Length)), injecting..."
+            $content = Get-Content $file -Raw
+            $content = $content.Replace('__UPDATE_PAT_PLACEHOLDER__', $token)
+            [System.IO.File]::WriteAllText($file, $content)
+            $verify = Get-Content $file -Raw
+            if ($verify.Contains('__UPDATE_PAT_PLACEHOLDER__')) {
+              Write-Host "ERROR: Placeholder still present!"
+              exit 1
+            }
+            Write-Host "Token injected and verified successfully"
+          }
         
       - name: Publish Linux x64
         run: |
