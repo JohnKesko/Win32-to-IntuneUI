@@ -117,6 +117,7 @@ public class IntuneGraphService
         {
             // Step 1: Test basic connectivity by getting organization info
             var orgResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/organization");
+            var orgErrorContent = await orgResponse.Content.ReadAsStringAsync();
 
             if (!orgResponse.IsSuccessStatusCode)
             {
@@ -124,36 +125,47 @@ public class IntuneGraphService
                 {
                     return (false, "Unauthorized - token may be expired or invalid");
                 }
-                var errorContent = await orgResponse.Content.ReadAsStringAsync();
-                return (false, $"Connection failed: {orgResponse.StatusCode}");
+                if (orgResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    // Parse the error for more details
+                    var errorDetail = TryParseGraphError(orgErrorContent);
+                    return (false,
+                        $"Forbidden - Organization access denied.\n\n" +
+                        $"Error: {errorDetail}\n\n" +
+                        "Ensure the app has 'Organization.Read.All' permission and admin consent is granted.");
+                }
+                return (false, $"Connection failed: {orgResponse.StatusCode}\n{orgErrorContent}");
             }
 
-            var orgContent = await orgResponse.Content.ReadAsStringAsync();
-            var orgData = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(orgContent);
+            var orgData = JsonSerializer.Deserialize<GraphListResponse<OrganizationInfo>>(orgErrorContent);
             var orgName = orgData?.Value?.FirstOrDefault()?.DisplayName ?? "Unknown Organization";
 
             // Step 2: Test DeviceManagementApps.ReadWrite.All permission
             // Try to list mobile apps - this requires the correct permission
             var appsResponse = await _httpClient.GetAsync($"{GraphBaseUrl}/deviceAppManagement/mobileApps?$top=1");
+            var appsErrorContent = await appsResponse.Content.ReadAsStringAsync();
 
             if (!appsResponse.IsSuccessStatusCode)
             {
+                var errorDetail = TryParseGraphError(appsErrorContent);
+
                 if (appsResponse.StatusCode == System.Net.HttpStatusCode.Forbidden)
                 {
                     return (false,
-                        $"Connected to: {orgName}\n\n" +
-                        "⚠️ Missing required permission!\n" +
-                        "The app needs 'DeviceManagementApps.ReadWrite.All' permission.\n\n" +
+                        $"✓ Connected to: {orgName}\n\n" +
+                        "Error: Missing required permission!\n\n" +
+                        $"Error: {errorDetail}\n\n" +
+                        "The app needs 'DeviceManagementApps.ReadWrite.All' (Application permission).\n\n" +
                         "To fix:\n" +
-                        "1. Go to Azure Portal → Microsoft Entra ID → App registrations\n" +
+                        "1. Azure Portal → Microsoft Entra ID → App registrations\n" +
                         "2. Select your app → API permissions → Add permission\n" +
                         "3. Microsoft Graph → Application permissions\n" +
-                        "4. Add: DeviceManagementApps.ReadWrite.All\n" +
-                        "5. Grant admin consent");
+                        "4. Search and add: DeviceManagementApps.ReadWrite.All\n" +
+                        "5. Click 'Grant admin consent for [Tenant]'\n" +
+                        "6. Wait 1-2 minutes for propagation, then retry");
                 }
 
-                var errorContent = await appsResponse.Content.ReadAsStringAsync();
-                return (false, $"Connected to {orgName}, but permission check failed: {appsResponse.StatusCode}");
+                return (false, $"Connected to {orgName}, but permission check failed:\n{appsResponse.StatusCode} - {errorDetail}");
             }
 
             return (true, $"✓ Connected to: {orgName}\n✓ Intune app permissions verified");
@@ -162,6 +174,23 @@ public class IntuneGraphService
         {
             return (false, $"Connection error: {ex.Message}");
         }
+    }
+
+    private static string TryParseGraphError(string responseContent)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(responseContent);
+            if (doc.RootElement.TryGetProperty("error", out var error))
+            {
+                var code = error.TryGetProperty("code", out var c) ? c.GetString() : "Unknown";
+                var message = error.TryGetProperty("message", out var m) ? m.GetString() : "No message";
+                return $"{code}: {message}";
+            }
+        }
+        catch { }
+
+        return responseContent.Length > 200 ? responseContent[..200] + "..." : responseContent;
     }
 
     /// <summary>
