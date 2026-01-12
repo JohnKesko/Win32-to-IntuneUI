@@ -119,15 +119,27 @@
                                 Foreground="#3498DB"
                                 Cursor="Hand"
                                 ToolTip.Tip="Click for error details"/>
-                        <Button Content="Test"
-                                Command="{Binding TestUpdateConnectionCommand}"
+                        <TextBlock Text="✓"
+                                   IsVisible="{Binding UpdateCheckSuccess}"
+                                   FontSize="12"
+                                   Foreground="#27AE60"
+                                   VerticalAlignment="Center"
+                                   ToolTip.Tip="Up to date"/>
+                        <TextBlock Text="✗"
+                                   IsVisible="{Binding UpdateCheckFailed}"
+                                   FontSize="12"
+                                   Foreground="#E74C3C"
+                                   VerticalAlignment="Center"
+                                   ToolTip.Tip="Update check failed"/>
+                        <Button Content="Check"
+                                Command="{Binding CheckForUpdatesCommand}"
                                 FontSize="9"
                                 Padding="4,1"
                                 Background="Transparent"
                                 BorderThickness="0"
-                                Foreground="#95A5A6"
+                                Foreground="#3498DB"
                                 Cursor="Hand"
-                                ToolTip.Tip="Test update connection"/>
+                                ToolTip.Tip="Check for updates"/>
                     </StackPanel>
                 </StackPanel>
             </Grid>

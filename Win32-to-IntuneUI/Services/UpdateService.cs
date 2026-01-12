@@ -60,7 +60,12 @@ public class UpdateService
 
         if (!hasValidToken)
         {
-            return $"No valid token. Current value starts with: {token[..Math.Min(10, token.Length)]}...";
+            var isDevMode = !(_updateManager?.IsInstalled ?? false);
+            if (isDevMode)
+            {
+                return "Dev mode - update token not configured.\n\nThis is normal when running from source.\nThe token is injected during CI/CD builds.";
+            }
+            return "Update token not configured.\n\nPlease ensure UPDATE_PAT secret is set in GitHub Actions.";
         }
 
         try

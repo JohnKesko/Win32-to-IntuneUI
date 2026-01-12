@@ -61,6 +61,18 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool HasUpdateError => !string.IsNullOrEmpty(UpdateErrorDetails);
 
     /// <summary>
+    /// Whether the update check was successful (latest version installed)
+    /// </summary>
+    [ObservableProperty]
+    private bool _updateCheckSuccess;
+
+    /// <summary>
+    /// Whether the update check failed
+    /// </summary>
+    [ObservableProperty]
+    private bool _updateCheckFailed;
+
+    /// <summary>
     /// Whether an update is available and ready to install
     /// </summary>
     [ObservableProperty]
@@ -150,19 +162,23 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Test the update connection (works in dev mode for debugging)
+    /// Check for updates (works in dev mode for debugging)
     /// </summary>
     [RelayCommand]
-    private async Task TestUpdateConnection()
+    private async Task CheckForUpdates()
     {
         if (MainWindow == null || UpdateService == null) return;
 
-        UpdateStatus = "Testing connection...";
+        UpdateStatus = "Checking...";
+        UpdateCheckSuccess = false;
+        UpdateCheckFailed = false;
+
         var result = await UpdateService.TestConnectionAsync();
+        var isSuccess = result.StartsWith("✓") || result.Contains("Latest:");
 
         var box = new Avalonia.Controls.Window
         {
-            Title = "Update Connection Test",
+            Title = "Update Check",
             Width = 600,
             Height = 400,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -177,7 +193,9 @@ public partial class MainWindowViewModel : ViewModelBase
         };
         await box.ShowDialog(MainWindow);
 
-        UpdateStatus = result.StartsWith("Success") ? result : "Connection test failed";
+        UpdateCheckSuccess = isSuccess;
+        UpdateCheckFailed = !isSuccess;
+        UpdateStatus = isSuccess ? "Up to date" : "Check failed";
     }
 
     /// <summary>

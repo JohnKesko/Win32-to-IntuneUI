@@ -82,6 +82,7 @@ jobs:
             --packVersion ${{ steps.version.outputs.VERSION }} `
             --packDir publish/win-x64 `
             --mainExe ${{ env.APP_NAME }}.exe `
+            --icon Win32-to-IntuneUI/Assets/avalonia-logo.ico `
             --channel win `
             --outputDir releases
             
