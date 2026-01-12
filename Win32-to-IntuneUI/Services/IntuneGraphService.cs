@@ -194,6 +194,8 @@ public class IntuneGraphService
         if (!File.Exists(intunewinPath))
             return (false, $"File not found: {intunewinPath}", null);
 
+        string? extractedContentFile = null;
+
         try
         {
             logCallback?.Invoke($"Starting upload for: {displayName}");
@@ -209,6 +211,19 @@ public class IntuneGraphService
 
             logCallback?.Invoke($"  Installer: {metadata.FileName}");
             logCallback?.Invoke($"  Unencrypted size: {FormatBytes(metadata.UnencryptedContentSize)}");
+
+            // Step 1b: Extract the encrypted content file from the .intunewin archive
+            // The .intunewin is a ZIP that contains Contents/<filename>.intunewin which is the actual encrypted file
+            logCallback?.Invoke("  Extracting encrypted content...");
+            extractedContentFile = ExtractEncryptedContentFile(intunewinPath, metadata.FileName);
+
+            if (extractedContentFile == null || !File.Exists(extractedContentFile))
+            {
+                return (false, "Failed to extract encrypted content from .intunewin file", null);
+            }
+
+            var encryptedFileInfo = new FileInfo(extractedContentFile);
+            logCallback?.Invoke($"  Encrypted size: {FormatBytes(encryptedFileInfo.Length)}");
 
             // Step 2: Create the Win32LobApp
             logCallback?.Invoke("Step 2: Creating app registration in Intune...");
@@ -228,10 +243,9 @@ public class IntuneGraphService
 
             logCallback?.Invoke($"  Content version: {contentVersionId}");
 
-            // Step 4: Create content file entry
+            // Step 4: Create content file entry (use the encrypted file size, not the outer .intunewin size)
             logCallback?.Invoke("Step 4: Creating content file entry...");
-            var fileInfo = new FileInfo(intunewinPath);
-            var contentFile = await CreateContentFileAsync(appId, contentVersionId, metadata, fileInfo.Length);
+            var contentFile = await CreateContentFileAsync(appId, contentVersionId, metadata, encryptedFileInfo.Length);
 
             if (contentFile == null || string.IsNullOrEmpty(contentFile.Id))
                 return (false, "Failed to create content file entry", appId);
@@ -246,8 +260,8 @@ public class IntuneGraphService
 
             logCallback?.Invoke("Step 5: Uploading file to Azure Storage...");
 
-            // Step 6: Upload to Azure Storage using block blobs
-            await UploadFileToAzureStorageAsync(intunewinPath, uploadInfo.AzureStorageUri, logCallback);
+            // Step 6: Upload the extracted encrypted content file to Azure Storage
+            await UploadFileToAzureStorageAsync(extractedContentFile, uploadInfo.AzureStorageUri, logCallback);
             logCallback?.Invoke("  File uploaded successfully");
 
             // Step 7: Commit the file
@@ -274,6 +288,21 @@ public class IntuneGraphService
         {
             logCallback?.Invoke($"ERROR: {ex.Message}");
             return (false, $"Upload failed: {ex.Message}", null);
+        }
+        finally
+        {
+            // Clean up extracted content file
+            if (extractedContentFile != null && File.Exists(extractedContentFile))
+            {
+                try
+                {
+                    File.Delete(extractedContentFile);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
         }
     }
 
@@ -678,6 +707,42 @@ public class IntuneGraphService
                 FileDigest = encryptionInfo.Element("FileDigest")?.Value,
                 FileDigestAlgorithm = encryptionInfo.Element("FileDigestAlgorithm")?.Value ?? "SHA256"
             };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extract the encrypted content file from the .intunewin archive.
+    /// The .intunewin file is a ZIP that contains:
+    /// - IntuneWinPackage/Contents/[filename].intunewin - the actual encrypted content
+    /// - IntuneWinPackage/Metadata/detection.xml - metadata and encryption info
+    /// We need to upload the content file from Contents folder, NOT the outer .intunewin file.
+    /// </summary>
+    private string? ExtractEncryptedContentFile(string intunewinPath, string? setupFileName)
+    {
+        try
+        {
+            using var archive = ZipFile.OpenRead(intunewinPath);
+
+            // Look for the encrypted content file in the Contents folder
+            // It will be named [setupFileName].intunewin or just any .intunewin file in Contents
+            var contentEntry = archive.Entries.FirstOrDefault(e =>
+                e.FullName.Contains("Contents/", StringComparison.OrdinalIgnoreCase) &&
+                e.FullName.EndsWith(".intunewin", StringComparison.OrdinalIgnoreCase));
+
+            if (contentEntry == null)
+            {
+                return null;
+            }
+
+            // Extract to a temp file
+            var tempPath = Path.Combine(Path.GetTempPath(), $"intunewin_upload_{Guid.NewGuid()}.bin");
+            contentEntry.ExtractToFile(tempPath, overwrite: true);
+
+            return tempPath;
         }
         catch
         {
