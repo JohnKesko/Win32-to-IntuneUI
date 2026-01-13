@@ -9,8 +9,8 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="Win32 to Intune Package Creator"
-        Width="900" Height="700"
-        MinWidth="800" MinHeight="600"
+        Width="900" Height="800"
+        MinWidth="800" MinHeight="800"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
