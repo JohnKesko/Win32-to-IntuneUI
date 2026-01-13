@@ -3,10 +3,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Win32_to_IntuneUI.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
         x:Class="Win32_to_IntuneUI.Views.IntuneUploadDialog"
         Title="Upload to Microsoft Intune"
-        Width="1000" Height="600"
+        Width="900" Height="600"
         WindowStartupLocation="CenterOwner"
         x:DataType="vm:IntuneUploadViewModel">
 
@@ -167,49 +167,40 @@
                     <!-- Application Name (Editable) -->
                     <DataGridTextColumn Header="Application Name"
                                         Binding="{Binding DisplayName}"
-                                        Width="180"
+                                        Width="2*"
                                         IsReadOnly="False"/>
                     
                     <!-- Install Command (Editable) -->
                     <DataGridTextColumn Header="Install Command"
                                         Binding="{Binding InstallCommand}"
-                                        Width="200"
+                                        Width="2*"
                                         IsReadOnly="False"/>
                     
                     <!-- Uninstall Command (Editable) -->
                     <DataGridTextColumn Header="Uninstall Command"
                                         Binding="{Binding UninstallCommand}"
-                                        Width="200"
+                                        Width="2*"
                                         IsReadOnly="False"/>
                     
-                    <!-- Publisher (Editable) -->
-                    <DataGridTextColumn Header="Publisher"
-                                        Binding="{Binding Publisher}"
-                                        Width="120"
-                                        IsReadOnly="False"/>
-                    
-                    <!-- Description (Editable) -->
-                    <DataGridTextColumn Header="Description"
-                                        Binding="{Binding Description}"
-                                        Width="150"
-                                        IsReadOnly="False"/>
-                    
-                    <!-- Package File -->
-                    <DataGridTextColumn Header="Package File"
-                                        Binding="{Binding PackageFileName}"
-                                        Width="150"
-                                        IsReadOnly="True"/>
-                    
-                    <!-- File Size -->
-                    <DataGridTextColumn Header="Size"
-                                        Binding="{Binding PackageFileSizeFormatted}"
-                                        Width="80"
-                                        IsReadOnly="True"/>
+                    <!-- Edit Button -->
+                    <DataGridTemplateColumn Header="Details" Width="60">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Edit"
+                                        Click="EditPackageDetails_Click"
+                                        Padding="8,4"
+                                        FontSize="11"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        ToolTip.Tip="Edit all package details"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     
                     <!-- Status -->
                     <DataGridTextColumn Header="Status"
                                         Binding="{Binding UploadStatus}"
-                                        Width="100"
+                                        Width="*"
                                         IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>

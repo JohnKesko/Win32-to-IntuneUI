@@ -1,0 +1,179 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="700"
+        x:Class="Win32_to_IntuneUI.Views.PackageDetailsDialog"
+        Title="Package Details"
+        Width="600" Height="700"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Window.Styles>
+        <Style Selector="Button.blue">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.blue:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2980B9"/>
+        </Style>
+        <Style Selector="Button.blue:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#21618C"/>
+        </Style>
+
+        <Style Selector="Button.gray">
+            <Setter Property="Background" Value="#95A5A6"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Button.gray:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#7F8C8D"/>
+        </Style>
+        <Style Selector="Button.gray:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5D6D7E"/>
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Spacing="5" Margin="0,0,0,15">
+            <TextBlock Text="Package Details" 
+                       FontSize="18" 
+                       FontWeight="Bold"/>
+            <TextBlock x:Name="PackageFileLabel"
+                       Text="package.intunewin"
+                       Foreground="Gray"
+                       FontSize="12"/>
+        </StackPanel>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="20">
+                
+                <!-- Basic Information Section -->
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="4" Padding="15">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Application Information" FontWeight="SemiBold" FontSize="14"/>
+                        
+                        <!-- Display Name -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Display Name:" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" x:Name="DisplayNameTextBox"
+                                     Watermark="Application name in Intune"/>
+                        </Grid>
+                        
+                        <!-- Version -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Version:" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" x:Name="VersionTextBox"
+                                     Watermark="e.g., 1.0.0"/>
+                        </Grid>
+                        
+                        <!-- Publisher -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Publisher:" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" x:Name="PublisherTextBox"
+                                     Watermark="Publisher name"/>
+                        </Grid>
+                        
+                        <!-- Description -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Description:" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                            <TextBox Grid.Column="1" x:Name="DescriptionTextBox"
+                                     TextWrapping="Wrap"
+                                     AcceptsReturn="True"
+                                     Height="80"
+                                     Watermark="Application description"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Commands Section -->
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="4" Padding="15">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Install/Uninstall Commands" FontWeight="SemiBold" FontSize="14"/>
+                        
+                        <!-- Install Command -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Install:" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" x:Name="InstallCommandTextBox"
+                                     Watermark="e.g., setup.exe /S"/>
+                        </Grid>
+                        
+                        <!-- Uninstall Command -->
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Uninstall:" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" x:Name="UninstallCommandTextBox"
+                                     Watermark="e.g., setup.exe /uninstall /S"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Detection Rules Section -->
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="4" Padding="15">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="Detection Rules" FontWeight="SemiBold" FontSize="14"/>
+                            <Button Grid.Column="1" 
+                                    x:Name="EditDetectionRulesButton"
+                                    Content="Edit Rules..."
+                                    Classes="blue"
+                                    Click="EditDetectionRules_Click"/>
+                        </Grid>
+                        
+                        <TextBlock x:Name="DetectionRulesSummaryLabel"
+                                   Text="No detection rules configured"
+                                   Foreground="Gray"
+                                   FontSize="12"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Package Info Section (Read-only) -->
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="4" Padding="15" Background="#F8F9FA">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Package Information" FontWeight="SemiBold" FontSize="14"/>
+                        
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="File:" Foreground="Gray"/>
+                            <TextBlock Grid.Column="1" x:Name="PackageFileNameLabel" Text="-"/>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Size:" Foreground="Gray"/>
+                            <TextBlock Grid.Column="1" x:Name="PackageSizeLabel" Text="-"/>
+                        </Grid>
+                        
+                        <Grid ColumnDefinitions="120,*" ColumnSpacing="10">
+                            <TextBlock Grid.Column="0" Text="Source Folder:" Foreground="Gray"/>
+                            <TextBlock Grid.Column="1" x:Name="SourceFolderLabel" Text="-" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="2" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Spacing="10" 
+                    Margin="0,20,0,0">
+            <Button Content="Cancel"
+                    Classes="gray"
+                    Click="Cancel_Click"
+                    Width="100"/>
+            <Button Content="Save"
+                    Classes="blue"
+                    Click="Save_Click"
+                    Width="100"/>
+        </StackPanel>
+    </Grid>
+</Window>

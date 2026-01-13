@@ -192,33 +192,37 @@ public static class PackageInfoParser
 
     private static void ParsePackageInfo(PackageInfo info, string key, string value)
     {
-        switch (key)
+        // Normalize key: remove underscores, fix common OCR typos
+        var normalizedKey = key
+            .Replace("_", "")
+            .Replace("11ne", "line") // OCR typo
+            .Replace("1ine", "line"); // OCR typo
+
+        switch (normalizedKey)
         {
             case "packageversion":
                 info.PackageVersion = value;
                 break;
-            case "installation_cd_line":
-            case "installation_cmd_line":
-            case "os_installation_cmd_11ne":
-            case "os_installation_cmd_line":
+            case "installationcdline":
+            case "installationcmdline":
+            case "osinstallationcmdline":
                 // Use the first install command found
                 if (string.IsNullOrEmpty(info.InstallCommand))
                     info.InstallCommand = value;
                 break;
-            case "uninstallation_cmd_11ne":
-            case "uninstallation_cmd_line":
+            case "uninstallationcmdline":
                 info.UninstallCommand = value;
                 break;
             case "productid":
                 info.ProductId = CleanProductId(value);
                 break;
-            case "restart_required":
+            case "restartrequired":
                 info.RestartRequired = value.Equals("yes", StringComparison.OrdinalIgnoreCase);
                 break;
             case "prerequisites":
                 info.Prerequisites = value;
                 break;
-            case "additional_information":
+            case "additionalinformation":
                 if (string.IsNullOrEmpty(info.Description))
                     info.Description = value;
                 break;

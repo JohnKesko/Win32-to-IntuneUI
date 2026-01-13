@@ -20,6 +20,7 @@ public partial class SinglePackageViewModel : ViewModelBase
     [ObservableProperty] private string _logOutput = string.Empty;
     [ObservableProperty] private double _progressValue;
     [ObservableProperty] private bool _isProgressVisible;
+    [ObservableProperty] private bool _isPackaging; // True while packaging is in progress (for indeterminate progress bar)
     [ObservableProperty] private string _toolStatus = "Checking tool availability...";
 
     private readonly IntuneToolDownloader _toolDownloader;
@@ -150,21 +151,9 @@ public partial class SinglePackageViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanCreatePackage))]
     private async Task CreatePackage()
     {
-        var toolPath = _toolDownloader.GetToolPath();
-
-        if (!File.Exists(toolPath))
-        {
-            AppendLog("ERROR: IntuneWinAppUtil.exe not available. Attempting to download...");
-            var downloaded = await _toolDownloader.EnsureToolAvailableAsync();
-            if (!downloaded)
-            {
-                AppendLog("ERROR: Failed to download IntuneWinAppUtil.exe");
-                return;
-            }
-        }
-
         IsProcessing = true;
         IsProgressVisible = true;
+        IsPackaging = true;
         ProgressValue = 0;
         LogOutput = string.Empty;
 
@@ -176,9 +165,40 @@ public partial class SinglePackageViewModel : ViewModelBase
             AppendLog($"Output folder: {OutputFolder}");
             AppendLog(new string('-', 80));
 
+            // Check if running on non-Windows platform - show preview mode
+            if (!OperatingSystem.IsWindows())
+            {
+                AppendLog("⚠ UI Preview Mode - Package creation requires Windows");
+                AppendLog("Simulating package creation for UI preview...");
+
+                // Simulate progress for UI preview (2 seconds)
+                await Task.Delay(2000);
+
+                IsPackaging = false;
+                ProgressValue = 100;
+                AppendLog(new string('-', 80));
+                AppendLog("Preview complete - actual packaging requires Windows");
+                IsProcessing = false;
+                return;
+            }
+
+            var toolPath = _toolDownloader.GetToolPath();
+
+            if (!File.Exists(toolPath))
+            {
+                AppendLog("ERROR: IntuneWinAppUtil.exe not available. Attempting to download...");
+                var downloaded = await _toolDownloader.EnsureToolAvailableAsync();
+                if (!downloaded)
+                {
+                    AppendLog("ERROR: Failed to download IntuneWinAppUtil.exe");
+                    return;
+                }
+            }
+
             await RunIntuneWinAppUtil(toolPath);
 
             ProgressValue = 100;
+            IsPackaging = false;
             AppendLog(new string('-', 80));
             AppendLog("Package creation completed!");
 
@@ -192,6 +212,7 @@ public partial class SinglePackageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            IsPackaging = false;
             AppendLog($"ERROR: {ex.Message}");
         }
         finally

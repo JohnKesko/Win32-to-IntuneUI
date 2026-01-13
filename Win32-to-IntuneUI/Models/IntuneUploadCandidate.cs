@@ -89,10 +89,40 @@ public partial class IntuneUploadCandidate : ObservableObject
     [ObservableProperty]
     private string _description = string.Empty;
 
+    [ObservableProperty]
+    private string _version = string.Empty;
+
     /// <summary>
-    /// Custom detection rules from intuneconfig.json
+    /// Custom detection rules for the application
     /// </summary>
-    public List<DetectionRule>? DetectionRules { get; set; }
+    [ObservableProperty]
+    private List<DetectionRule>? _detectionRules;
+
+    /// <summary>
+    /// Display summary for detection rules column
+    /// </summary>
+    public string DetectionRulesSummary
+    {
+        get
+        {
+            if (DetectionRules == null || DetectionRules.Count == 0)
+                return "None";
+            if (DetectionRules.Count == 1)
+                return $"1 rule ({DetectionRules[0].Type})";
+            return $"{DetectionRules.Count} rules";
+        }
+    }
+
+    /// <summary>
+    /// Whether detection rules are configured
+    /// </summary>
+    public bool HasDetectionRules => DetectionRules != null && DetectionRules.Count > 0;
+
+    partial void OnDetectionRulesChanged(List<DetectionRule>? value)
+    {
+        OnPropertyChanged(nameof(DetectionRulesSummary));
+        OnPropertyChanged(nameof(HasDetectionRules));
+    }
 
     public string PackageFileName => Path.GetFileName(PackageFilePath);
 
@@ -379,16 +409,23 @@ public partial class IntuneUploadCandidate : ObservableObject
     {
         // Only apply if fields are not already set (from intuneconfig.json or .txt files)
 
+        var extractedVersion = PeFileAnalyzer.GetBestVersion(peResult);
+
+        // Apply version from PE file
+        if (string.IsNullOrEmpty(Version) && !string.IsNullOrEmpty(extractedVersion))
+        {
+            Version = extractedVersion;
+        }
+
         // Apply display name from PE file
         if (string.IsNullOrEmpty(DisplayName) || DisplayName == FolderName)
         {
             var appName = PeFileAnalyzer.GetBestAppName(peResult);
-            var version = PeFileAnalyzer.GetBestVersion(peResult);
 
             if (!string.IsNullOrEmpty(appName))
             {
-                DisplayName = !string.IsNullOrEmpty(version)
-                    ? $"{appName} {version}"
+                DisplayName = !string.IsNullOrEmpty(extractedVersion)
+                    ? $"{appName} {extractedVersion}"
                     : appName;
             }
         }

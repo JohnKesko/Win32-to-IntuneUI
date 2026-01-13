@@ -34,6 +34,7 @@ public partial class BatchProcessingViewModel : ViewModelBase
     [ObservableProperty] private int _progressTotal;
     [ObservableProperty] private string _progressText = string.Empty;
     [ObservableProperty] private bool _isProgressVisible;
+    [ObservableProperty] private bool _isProcessingBatch; // True while batch is processing (for indeterminate animation)
     [ObservableProperty] private int _parallelTasks = 4; // Default parallel tasks
 
     public int ReadyCount => BatchCandidates.Count(c => c.Status == PackageStatus.Ready);
@@ -406,29 +407,92 @@ public partial class BatchProcessingViewModel : ViewModelBase
             }
         }
 
-        var toolPath = _toolDownloader.GetToolPath();
-        if (!File.Exists(toolPath))
+        var processableCandidates = BatchCandidates.Where(c => c.Status == PackageStatus.Ready).ToList();
+
+        if (processableCandidates.Count == 0)
         {
-            AppendLog("ERROR: IntuneWinAppUtil.exe not available");
+            AppendLog("No packages ready to process");
+            BatchStatusText = "No packages ready to process";
             return;
         }
 
         IsProcessing = true;
         IsProgressVisible = true;
-        LogOutput = string.Empty;
-
-        var processableCandidates = BatchCandidates.Where(c => c.Status == PackageStatus.Ready).ToList();
+        IsProcessingBatch = true;
         ProgressTotal = processableCandidates.Count;
         ProgressCurrent = 0;
+        ProgressText = $"Processing 0/{processableCandidates.Count}...";
+
+        var startTime = DateTime.Now;
+        var successCount = 0;
+        var failedCount = 0;
 
         AppendLog($"Starting parallel batch processing ({ParallelTasks} concurrent tasks)...");
         AppendLog($"Processing {ProgressTotal} application(s)");
         AppendLog(new string('-', 80));
 
-        var successCount = 0;
-        var failedCount = 0;
+        // Check if running on non-Windows platform - show preview mode
+        if (!OperatingSystem.IsWindows())
+        {
+            AppendLog("⚠ UI Preview Mode - Package creation requires Windows");
+            AppendLog("Simulating batch processing for UI preview...");
+
+            foreach (var candidate in processableCandidates)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.Status = PackageStatus.Processing;
+                });
+
+                AppendLog($"  [PREVIEW] Processing: {candidate.FolderName}");
+                AppendLog($"  Command: IntuneWinAppUtil.exe -c \"{candidate.FolderPath}\" -s \"{candidate.SelectedInstaller}\" -o \"{BatchOutputFolder}/{candidate.FolderName}\" -q");
+
+                // Simulate processing time per package
+                await Task.Delay(800);
+
+                successCount++;
+                ProgressCurrent = successCount;
+                ProgressText = $"Processing {successCount}/{ProgressTotal}...";
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    candidate.Status = PackageStatus.Success;
+                    candidate.OutputFilePath = $"[Preview] {candidate.FolderName}.intunewin";
+                });
+
+                AppendLog($"  [PREVIEW SUCCESS] {candidate.FolderName}");
+            }
+
+            var previewElapsed = DateTime.Now - startTime;
+            IsProcessing = false;
+            IsProgressVisible = false;
+            IsProcessingBatch = false;
+
+            AppendLog("");
+            AppendLog(new string('-', 80));
+            AppendLog($"Preview batch complete in {previewElapsed:mm\\:ss}:");
+            AppendLog($"  Simulated: {successCount}/{ProgressTotal}");
+            AppendLog("  Note: Actual packaging requires Windows");
+
+            BatchStatusText = $"Preview: {successCount} simulated";
+            ProgressText = string.Empty;
+
+            BatchCompleted?.Invoke(this, BatchCandidates);
+            ProcessBatchCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        var toolPath = _toolDownloader.GetToolPath();
+        if (!File.Exists(toolPath))
+        {
+            AppendLog("ERROR: IntuneWinAppUtil.exe not available");
+            IsProcessing = false;
+            IsProgressVisible = false;
+            IsProcessingBatch = false;
+            return;
+        }
+
         var processedCount = 0;
-        var startTime = DateTime.Now;
 
         // Use semaphore to limit concurrent processes
         using var semaphore = new SemaphoreSlim(ParallelTasks);
@@ -494,6 +558,7 @@ public partial class BatchProcessingViewModel : ViewModelBase
 
         IsProcessing = false;
         IsProgressVisible = false;
+        IsProcessingBatch = false;
         AppendLog("");
         AppendLog(new string('-', 80));
         AppendLog($"Batch processing complete in {elapsed:mm\\:ss}:");

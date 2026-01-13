@@ -22,6 +22,12 @@ public class IntuneConfigFile
     public string? DisplayName { get; set; }
 
     /// <summary>
+    /// Application version
+    /// </summary>
+    [JsonPropertyName("version")]
+    public string? Version { get; set; }
+
+    /// <summary>
     /// Description for the app in Intune
     /// </summary>
     [JsonPropertyName("description")]

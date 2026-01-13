@@ -36,6 +36,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
     [ObservableProperty] private int _progressTotal;
     [ObservableProperty] private string _progressText = string.Empty;
     [ObservableProperty] private bool _isProgressVisible;
+    [ObservableProperty] private bool _isUploading; // True while uploads are in progress (for indeterminate progress bar)
     [ObservableProperty] private int _parallelUploads = 3; // Default parallel uploads (conservative for API rate limits)
 
     // Completion banner
@@ -114,6 +115,8 @@ public partial class IntuneUploadViewModel : ViewModelBase
     {
         if (!string.IsNullOrWhiteSpace(config.DisplayName))
             candidate.DisplayName = config.DisplayName;
+        if (!string.IsNullOrWhiteSpace(config.Version))
+            candidate.Version = config.Version;
         if (!string.IsNullOrWhiteSpace(config.InstallCommand))
             candidate.InstallCommand = config.InstallCommand;
         if (!string.IsNullOrWhiteSpace(config.UninstallCommand))
@@ -131,6 +134,10 @@ public partial class IntuneUploadViewModel : ViewModelBase
     /// </summary>
     private static void ApplyPackageInfo(IntuneUploadCandidate candidate, PackageInfoParser.PackageInfo info)
     {
+        // Apply version
+        if (!string.IsNullOrWhiteSpace(info.Version))
+            candidate.Version = info.Version;
+
         // Build display name with version
         if (!string.IsNullOrWhiteSpace(info.Name))
         {
@@ -170,6 +177,15 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready",
                 IsSelected = true
             };
+
+            // Try to parse package info from .txt files in the source folder
+            var packageInfo = PackageInfoParser.TryParseFromFolder(folderPath);
+            if (packageInfo != null)
+            {
+                ApplyPackageInfo(uploadCandidate, packageInfo);
+            }
+
+            // Detect scripts and generate commands for any fields not set
             uploadCandidate.DetectAndGenerateCommands();
 
             UploadCandidates.Add(uploadCandidate);
@@ -203,6 +219,15 @@ public partial class IntuneUploadViewModel : ViewModelBase
                 UploadStatus = "Ready",
                 IsSelected = true
             };
+
+            // Try to parse package info from .txt files in the source folder
+            var packageInfo = PackageInfoParser.TryParseFromFolder(folderPath);
+            if (packageInfo != null)
+            {
+                ApplyPackageInfo(uploadCandidate, packageInfo);
+            }
+
+            // Detect scripts and generate commands for any fields not set
             uploadCandidate.DetectAndGenerateCommands();
 
             UploadCandidates.Add(uploadCandidate);
@@ -219,7 +244,12 @@ public partial class IntuneUploadViewModel : ViewModelBase
     [RelayCommand]
     private async Task BrowseForPackages()
     {
-        if (MainWindow == null) return;
+        if (MainWindow == null)
+        {
+            AppendLog("Error: MainWindow reference is null. Cannot open file picker.");
+            UploadStatusText = "Error: Window reference not set";
+            return;
+        }
 
         var storageProvider = MainWindow.StorageProvider;
         var files = await storageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
@@ -319,8 +349,10 @@ public partial class IntuneUploadViewModel : ViewModelBase
 
         IsProcessing = true;
         IsProgressVisible = true;
+        IsUploading = true;
         ProgressTotal = selectedCandidates.Count;
         ProgressCurrent = 0;
+        ProgressText = $"Uploading 0/{selectedCandidates.Count}...";
 
         var startTime = DateTime.Now;
         AppendLog("");
@@ -341,9 +373,16 @@ public partial class IntuneUploadViewModel : ViewModelBase
             await semaphore.WaitAsync();
             try
             {
+                int currentIndex;
+                lock (lockObj)
+                {
+                    currentIndex = processedCount + 1;
+                }
+
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     candidate.UploadStatus = "Uploading...";
+                    ProgressText = $"Uploading {currentIndex}/{ProgressTotal}...";
                 });
 
                 AppendLogThreadSafe($"[START] {candidate.DisplayName}");
@@ -399,6 +438,7 @@ public partial class IntuneUploadViewModel : ViewModelBase
 
         IsProcessing = false;
         IsProgressVisible = false;
+        IsUploading = false;
         ProgressText = string.Empty;
 
         AppendLog("");
